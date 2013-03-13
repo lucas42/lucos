@@ -11,7 +11,7 @@ Whilst most services provide a single module, some provide multiple (or none at 
 This is an incomplete list of lucos services:
 
 * **[services](https://github.com/lucas42/lucos_services)** A program which is in charge of running all the other services.
-* **travel** Keeps track of public transport data (in a manner suitable for forms of transport with poor networking conditions)
+* **[transport](https://github.com/lucas42/lucos_transport)** Keeps track of public transport data (in a manner suitable for forms of transport with poor networking conditions)
 * **mediamanager** Keeps track of a playlist of music to play
 * **mediaselector** Makes decisions about what music to play
 * **root** Displays a list of lucos modules on a handy homepage
