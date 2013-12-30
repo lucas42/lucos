@@ -19,7 +19,7 @@ This is an incomplete list of lucos services:
 * **[root](https://github.com/lucas42/lucos_root)** Displays a list of lucos modules on a handy homepage
 * **[contacts](https://github.com/lucas42/lucos_contacts)** Keeps track of a database of people
 * **auth** Authenticates users of lucos
-* **time** Keeps track of the time
+* **[time](https://github.com/lucas42/lucos_time)** Keeps track of the time
 
 ##Libraries
 Currently any lucos libraries used by multiple modules are stored in the [lucos core](https://github.com/lucas42/lucos_core).  These libraries may get split into smaller repositories if needs be in the future.
