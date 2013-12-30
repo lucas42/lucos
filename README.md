@@ -16,7 +16,7 @@ This is an incomplete list of lucos services:
 * **[notes](https://github.com/lucas42/lucos_notes)** An offline todo list.
 * **mediamanager** Keeps track of a playlist of music to play
 * **mediaselector** Makes decisions about what music to play
-* **root** Displays a list of lucos modules on a handy homepage
+* **[root](https://github.com/lucas42/lucos_root)** Displays a list of lucos modules on a handy homepage
 * **[contacts](https://github.com/lucas42/lucos_contacts)** Keeps track of a database of people
 * **auth** Authenticates users of lucos
 * **time** Keeps track of the time
