@@ -18,7 +18,7 @@ This is an incomplete list of lucos services:
 * **mediaselector** Makes decisions about what music to play
 * **[root](https://github.com/lucas42/lucos_root)** Displays a list of lucos modules on a handy homepage
 * **[contacts](https://github.com/lucas42/lucos_contacts)** Keeps track of a database of people
-* **auth** Authenticates users of lucos
+* **[auth](https://github.com/lucas42/lucos_authentication)** Authenticates users of lucos
 * **[time](https://github.com/lucas42/lucos_time)** Keeps track of the time
 
 ##Libraries
