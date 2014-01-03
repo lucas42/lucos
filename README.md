@@ -14,8 +14,8 @@ This is an incomplete list of lucos services:
 * **[transport](https://github.com/lucas42/lucos_transport)** Keeps track of public transport data (in a manner suitable for forms of transport with poor networking conditions).
 * **[dns](https://github.com/lucas42/lucos_dns)** A lightweight dynamic DNS tool.
 * **[notes](https://github.com/lucas42/lucos_notes)** An offline todo list.
-* **mediamanager** Keeps track of a playlist of music to play
-* **mediaselector** Makes decisions about what music to play
+* **[mediamanager](https://github.com/lucas42/lucos_media_manager)** Keeps track of a playlist of music to play
+* **[mediaselector](https://github.com/lucas42/lucos_media_selector)** Makes decisions about what music to play
 * **[root](https://github.com/lucas42/lucos_root)** Displays a list of lucos modules on a handy homepage
 * **[contacts](https://github.com/lucas42/lucos_contacts)** Keeps track of a database of people
 * **[auth](https://github.com/lucas42/lucos_authentication)** Authenticates users of lucos
