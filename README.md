@@ -1,13 +1,13 @@
-#lucos
+# lucos
 
 lucos is a system of web-based modules, which do an array of different things.  I'm gradually putting each of these up on github bit-by-bit.
 
-##Terminology
+## Terminology
 * **Service** A program, which when run acts as a webserver on a single port
 * **Module** A unit of functionality provided by a service
 Whilst most services provide a single module, some provide multiple (or none at all).
 
-##Services
+## Services
 This is an incomplete list of lucos services:
 
 * **[services](https://github.com/lucas42/lucos_services)** A program which is in charge of running all the other services.
@@ -21,5 +21,5 @@ This is an incomplete list of lucos services:
 * **[auth](https://github.com/lucas42/lucos_authentication)** Authenticates users of lucos
 * **[time](https://github.com/lucas42/lucos_time)** Keeps track of the time
 
-##Libraries
+## Libraries
 Currently any lucos libraries used by multiple modules are stored in the [lucos core](https://github.com/lucas42/lucos_core).  These libraries may get split into smaller repositories if needs be in the future.
