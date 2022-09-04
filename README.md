@@ -22,4 +22,5 @@ This is an incomplete list of lucos services:
 * **[time](https://github.com/lucas42/lucos_time)** Keeps track of the time
 
 ## Libraries
-Currently any lucos libraries used by multiple modules are stored in the [lucos core](https://github.com/lucas42/lucos_core).  These libraries may get split into smaller repositories if needs be in the future.
+* **[navbar](https://github.com/lucas42/lucos_navbar)** Navigation bar, giving consistent styling across apps.
+* **[time_component](https://github.com/lucas42/lucos_time_component)** Displays the time, NTP-synced to lucos_time
