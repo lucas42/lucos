@@ -2,10 +2,7 @@
 	"folders":
 	[
 		{
-			"path": "~/sandboxes"
+			"path": "~/sandboxes",
 		},
-		{
-			"path": "~/go/src/github.com/lucas42"
-		}
-	]
+	],
 }
