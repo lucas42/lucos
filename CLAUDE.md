@@ -86,6 +86,34 @@ build:
 
 The Dockerfile can then `COPY shared/ /shared/` from the repo root.
 
+### Volumes
+
+Always declare every volume explicitly — both in the service's `volumes:` mount and in the top-level `volumes:` section. Never rely on anonymous volumes created implicitly by a Docker image's `VOLUME` directive.
+
+Anonymous volumes don't receive Docker Compose project labels, which breaks `lucos_backups` monitoring.
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data        # explicit mount — never omit this
+
+volumes:
+  redis_data:                   # always declare at top level
+```
+
+Every named volume must also be added to **`lucos_configy/config/volumes.yaml`** with a description and `recreate_effort`. Docker Compose names volumes as `<project>_<volume_name>` (e.g. `lucos_photos_redis_data`). Valid `recreate_effort` values:
+
+| Value | Meaning |
+|---|---|
+| `automatic` | Can be fully regenerated automatically |
+| `small` | Small technical effort to recreate |
+| `tolerable` | Loss would be tolerable |
+| `considerable` | Considerable effort to recreate |
+| `huge` | Huge effort / primary source data |
+| `remote` | Remote mount from elsewhere — set `skip_backup: true` |
+
 ### Networking
 
 - HTTP traffic is proxied through a shared Nginx reverse proxy; TLS is terminated externally
