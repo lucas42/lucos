@@ -151,6 +151,52 @@ workflows:
 
 ---
 
+## GitHub Credentials for AI Agents
+
+When interacting with GitHub (creating issues, posting comments, etc.), always authenticate as the **lucos_agent** GitHub App rather than using personal credentials. Issues and comments will then appear attributed to `lucos_agent[bot]`.
+
+### Setup
+
+The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env` file in that directory, pulled from lucos_creds:
+
+```bash
+scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
+```
+
+### Generating a token
+
+```bash
+TOKEN=$(~/sandboxes/lucos_agent/get-token)
+```
+
+Tokens are valid for **1 hour**. Generate a fresh one at the start of any session that needs GitHub access; do not cache or reuse across sessions.
+
+### Using the token
+
+Pass the token as an `Authorization` header via `gh api`:
+
+```bash
+# Create an issue
+gh api repos/lucas42/{repo}/issues \
+    -H "Authorization: token $TOKEN" \
+    --method POST \
+    -f title="Issue title" \
+    -f body="Issue body"
+```
+
+Or with `curl`:
+
+```bash
+curl -s -X POST \
+    -H "Authorization: token $TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    https://api.github.com/repos/lucas42/{repo}/issues \
+    -d '{"title":"Issue title","body":"Issue body"}'
+```
+
+---
+
 ## GitHub Config
 
 ### CodeQL (`.github/workflows/codeql-analysis.yml`)
