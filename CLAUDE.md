@@ -163,37 +163,19 @@ The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env`
 scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
 ```
 
-### Generating a token
+### Making GitHub API calls
 
-```bash
-TOKEN=$(~/sandboxes/lucos_agent/get-token)
-```
-
-Tokens are valid for **1 hour**. Generate a fresh one at the start of any session that needs GitHub access; do not cache or reuse across sessions.
-
-### Using the token
-
-Pass the token as an `Authorization` header via `gh api`:
+Use the `gh-as-agent` wrapper script instead of calling `gh api` directly. It handles token generation internally:
 
 ```bash
 # Create an issue
-gh api repos/lucas42/{repo}/issues \
-    -H "Authorization: token $TOKEN" \
+~/sandboxes/lucos_agent/gh-as-agent repos/lucas42/{repo}/issues \
     --method POST \
     -f title="Issue title" \
     -f body="Issue body"
 ```
 
-Or with `curl`:
-
-```bash
-curl -s -X POST \
-    -H "Authorization: token $TOKEN" \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    https://api.github.com/repos/lucas42/{repo}/issues \
-    -d '{"title":"Issue title","body":"Issue body"}'
-```
+All `gh api` flags and arguments are passed through directly. There is no need to generate or manage tokens manually.
 
 ---
 
