@@ -124,7 +124,7 @@ Every named volume must also be added to **`lucos_configy/config/volumes.yaml`**
 
 ## CircleCI
 
-Standard `.circleci/config.yml` for a lucos project:
+When a project has no tests, the standard `.circleci/config.yml` is:
 
 ```yaml
 version: 2.1
@@ -145,9 +145,51 @@ workflows:
                 - main
 ```
 
+When a project has tests, add a `test` job running **in parallel** with `build-amd64`; both must pass before deploy. Tests run on all branches (no filter), deploy only on `main`.
+
+**Self-contained tests** (e.g. FastAPI + SQLite in-memory — no real DB or env file needed):
+
+```yaml
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.14
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: pip install -e shared/ -r api/requirements.txt -r api/requirements-test.txt
+      - run:
+          name: Run tests
+          command: cd api && pytest
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - test
+      - lucos/build-amd64
+      - lucos/deploy-avalon:
+          serial-group: << pipeline.project.slug >>/deploy-avalon
+          requires:
+            - test
+            - lucos/build-amd64
+          filters:
+            branches:
+              only:
+                - main
+```
+
+**Tests needing a real database** (e.g. Django — see lucos_contacts for full example): use `cimg/base:current` + `setup_remote_docker`, fetch a test `.env` from `creds.l42.eu:<repo>/test/.env`, and run via `docker compose --profile test up test --build --exit-code-from test`.
+
 - The `lucos/build-amd64` job builds and pushes Docker images
 - The `lucos/deploy-avalon` job deploys to the server, but only on `main`
 - The CI build step has access to a dummy `PORT` only — no other env vars are available during build
+
+---
+
+## Python / FastAPI Testing
+
+See [`python-testing.md`](python-testing.md) for FastAPI + SQLAlchemy testing patterns and gotchas.
 
 ---
 
