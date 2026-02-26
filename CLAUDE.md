@@ -236,6 +236,36 @@ All `gh api` flags and arguments are passed through directly. There is no need t
 
 ---
 
+## Working on GitHub Issues
+
+When assigned or asked to work on a GitHub issue, follow this workflow:
+
+### 1. Post a starting comment
+
+Before beginning any code changes, post a comment on the issue using `gh-as-agent` to say you're starting work and give a brief overview of your approach. Write it in the first person, e.g.:
+
+> I'm going to tackle this by updating the API handler to validate the input before passing it to the database layer, then add a test to cover the new behaviour.
+
+### 2. Tag commits and pull requests with the issue
+
+Every commit and pull request made as part of the work should reference the issue number. In commit messages, include the issue reference (e.g. `Refs #42`). In the pull request body, use one of GitHub's standard closing keywords so the issue is automatically closed when the PR is merged into `main`:
+
+```
+Closes #42
+```
+
+The full list of supported keywords is: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` — followed by the issue reference (e.g. `Fixes #42` or `Resolves lucas42/lucos_example#42`).
+
+### 3. Comment on unexpected obstacles
+
+If you hit a significant unexpected obstacle during the work — especially one that risks not being able to finish without further input — post a follow-up comment on the issue explaining what you've encountered. Don't silently get stuck or work around something without flagging it.
+
+### 4. Don't close issues yourself
+
+Issues should be closed automatically via the closing keyword in the merged PR. Do not close issues manually unless explicitly instructed to (e.g. told that an issue is now obsolete).
+
+---
+
 ## GitHub Config
 
 ### CodeQL (`.github/workflows/codeql-analysis.yml`)
