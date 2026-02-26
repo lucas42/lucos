@@ -195,11 +195,16 @@ See [`python-testing.md`](python-testing.md) for FastAPI + SQLAlchemy testing pa
 
 ## GitHub Credentials for AI Agents
 
-When interacting with GitHub (creating issues, posting comments, etc.), always authenticate as the **lucos_agent** GitHub App rather than using personal credentials. Issues and comments will then appear attributed to `lucos_agent[bot]`.
+When interacting with GitHub (creating issues, posting comments, etc.), authenticate as the appropriate GitHub App rather than using personal credentials.
+
+| Persona | GitHub App | Bot name |
+|---|---|---|
+| General / default | `lucos_agent` | `lucos_agent[bot]` |
+| lucos-issue-manager | `lucos_issue_manager` | `lucos_issue_manager[bot]` |
 
 ### Setup
 
-The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env` file in that directory, pulled from lucos_creds:
+The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env` file in that directory (containing keys for both apps), pulled from lucos_creds:
 
 ```bash
 scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
@@ -210,8 +215,14 @@ scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
 Use the `gh-as-agent` wrapper script instead of calling `gh api` directly. It handles token generation internally:
 
 ```bash
-# Create an issue
+# Default: authenticates as lucos_agent
 ~/sandboxes/lucos_agent/gh-as-agent repos/lucas42/{repo}/issues \
+    --method POST \
+    -f title="Issue title" \
+    -f body="Issue body"
+
+# lucos-issue-manager persona: use --app as the first argument
+~/sandboxes/lucos_agent/gh-as-agent --app lucos_issue_manager repos/lucas42/{repo}/issues \
     --method POST \
     -f title="Issue title" \
     -f body="Issue body"
