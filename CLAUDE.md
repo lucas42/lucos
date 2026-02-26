@@ -199,12 +199,13 @@ When interacting with GitHub (creating issues, posting comments, etc.), authenti
 
 | Persona | GitHub App | Bot name |
 |---|---|---|
-| General / default | `lucos_agent` | `lucos_agent[bot]` |
-| lucos-issue-manager | `lucos_issue_manager` | `lucos_issue_manager[bot]` |
+| General / default | `lucos-agent` | `lucos-agent[bot]` |
+| lucos-issue-manager | `lucos-issue-manager` | `lucos-issue-manager[bot]` |
+| lucos-code-reviewer | `lucos-code-reviewer` | `lucOS Code Reviewer[bot]` |
 
 ### Setup
 
-The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env` file in that directory (containing keys for both apps), pulled from lucos_creds:
+The `get-token` script lives in `~/sandboxes/lucos_agent/`. It requires a `.env` file in that directory (containing keys for all apps), pulled from lucos_creds:
 
 ```bash
 scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
@@ -221,13 +222,18 @@ When the request body contains text (e.g. issue bodies, comments), write the pay
 # {"title": "Issue title", "body": "Body with `code` and **markdown**"}
 
 # Step 2: call gh-as-agent with --input
-# Default: authenticates as lucos_agent
+# Default: authenticates as lucos-agent
 ~/sandboxes/lucos_agent/gh-as-agent repos/lucas42/{repo}/issues \
     --method POST \
     --input /tmp/gh-payload.json
 
 # lucos-issue-manager persona: use --app as the first argument
-~/sandboxes/lucos_agent/gh-as-agent --app lucos_issue_manager repos/lucas42/{repo}/issues \
+~/sandboxes/lucos_agent/gh-as-agent --app lucos-issue-manager repos/lucas42/{repo}/issues \
+    --method POST \
+    --input /tmp/gh-payload.json
+
+# lucos-code-reviewer persona
+~/sandboxes/lucos_agent/gh-as-agent --app lucos-code-reviewer repos/lucas42/{repo}/pulls/{pr}/reviews \
     --method POST \
     --input /tmp/gh-payload.json
 ```
