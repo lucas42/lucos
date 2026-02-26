@@ -246,7 +246,21 @@ Before beginning any code changes, post a comment on the issue using `gh-as-agen
 
 > I'm going to tackle this by updating the API handler to validate the input before passing it to the database layer, then add a test to cover the new behaviour.
 
-### 2. Tag commits and pull requests with the issue
+### 2. Create pull requests using gh-as-agent
+
+Pull requests must be created using `gh-as-agent`, exactly like issue comments and any other GitHub API calls — **never** using `gh pr create` directly (which uses personal credentials instead of the correct bot identity). Write the PR body to a file and pass it via `--input`:
+
+```bash
+# Step 1: use the Write tool to create /tmp/gh-payload.json, e.g.:
+# {"title": "Fix the thing", "head": "my-branch", "base": "main", "body": "Closes #42\n\n..."}
+
+# Step 2: call gh-as-agent
+~/sandboxes/lucos_agent/gh-as-agent repos/lucas42/{repo}/pulls \
+    --method POST \
+    --input /tmp/gh-payload.json
+```
+
+### 3. Tag commits and pull requests with the issue
 
 Every commit and pull request made as part of the work should reference the issue number. In commit messages, include the issue reference (e.g. `Refs #42`). In the pull request body, use one of GitHub's standard closing keywords so the issue is automatically closed when the PR is merged into `main`:
 
