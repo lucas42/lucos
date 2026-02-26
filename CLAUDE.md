@@ -214,18 +214,22 @@ scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/
 
 Use the `gh-as-agent` wrapper script instead of calling `gh api` directly. It handles token generation internally:
 
+When the request body contains text (e.g. issue bodies, comments), write the payload to a file first and pass it via `--input`. This avoids backticks in Markdown content being misinterpreted as shell command substitution:
+
 ```bash
+# Step 1: use the Write tool to create /tmp/gh-payload.json, e.g.:
+# {"title": "Issue title", "body": "Body with `code` and **markdown**"}
+
+# Step 2: call gh-as-agent with --input
 # Default: authenticates as lucos_agent
 ~/sandboxes/lucos_agent/gh-as-agent repos/lucas42/{repo}/issues \
     --method POST \
-    -f title="Issue title" \
-    -f body="Issue body"
+    --input /tmp/gh-payload.json
 
 # lucos-issue-manager persona: use --app as the first argument
 ~/sandboxes/lucos_agent/gh-as-agent --app lucos_issue_manager repos/lucas42/{repo}/issues \
     --method POST \
-    -f title="Issue title" \
-    -f body="Issue body"
+    --input /tmp/gh-payload.json
 ```
 
 All `gh api` flags and arguments are passed through directly. There is no need to generate or manage tokens manually.
