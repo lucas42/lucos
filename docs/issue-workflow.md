@@ -102,13 +102,13 @@ When an agent's comment is the most recent activity on an issue with no subseque
 
 A +1 reaction from lucas42 on a comment counts as approval of that comment's recommendations. If the +1'd comment contains a design proposal, treat the design as approved. If it lays out options with a recommendation, treat the +1 as agreement with the recommended option.
 
-## Picking up implementation work
+## Reviewing vs implementing
 
-Implementation uses a separate prompt from review work:
+Agents respond to two distinct prompts, each backed by a separate script invocation that returns non-overlapping sets of issues:
 
-- **"work on your issues"** -- review/design mode: works through all assigned issues including `needs-refining`.
-- **"pick up your next issue"** -- implementation mode: picks up a single `agent-approved` issue, implements it, opens a PR, then stops.
+- **"review your issues"** -- reviewing: runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues. The agent provides design input, specialist review, or discussion.
+- **"implement your next issue"** -- implementing: runs `get-issues-for-persona --implement <persona>`, which returns the single highest-priority `agent-approved`, non-blocked issue. The agent writes code, opens a PR, then stops.
 
-The one-at-a-time approach avoids multiple simultaneous changes that are hard to debug and expensive on credits.
+The one-at-a-time approach for implementation avoids multiple simultaneous changes that are hard to debug and expensive on credits.
 
 See [agent-prompts.md](agent-prompts.md) for the full prompt reference.

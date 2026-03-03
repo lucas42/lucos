@@ -2,14 +2,16 @@
 
 How to get each agent to discover and work through its own backlog.
 
+There are two distinct types of work: **reviewing** (design input, specialist review, triage) and **implementing** (writing code, opening PRs). Each has its own prompt and its own script invocation, returning non-overlapping sets of issues.
+
 ---
 
-## All agents at once
+## All agents, review
 
-Dispatches all agents in three sequential phases. The dispatcher must wait for each phase to fully complete before starting the next.
+Dispatches all agents in three sequential phases for review/triage work. The dispatcher must wait for each phase to fully complete before starting the next.
 
 ```
-all agents, work on your issues
+all agents, review your issues
 ```
 
 **Phase 1** (parallel): `lucos-issue-manager` + `lucos-code-reviewer`
@@ -18,7 +20,7 @@ The issue manager runs first to assign `owner:` labels to unowned issues, so tha
 
 **Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability`
 
-The four specialist agents work through their assigned backlogs. They often add comments or partial work rather than closing issues outright, which may leave issues needing reassignment.
+The four specialist agents review their assigned backlogs. They post design proposals, comments, or assessments, which may leave issues needing reassignment.
 
 **Phase 3** (after Phase 2): `lucos-issue-manager` again
 
@@ -26,90 +28,89 @@ A second pass by the issue manager to review anything Phase 2 agents touched, re
 
 ---
 
-## lucos-issue-manager
+## Reviewing issues
 
-Triages issues (unlabelled, updated since last review, or routed back to it).
+Each agent reviews `needs-refining` issues assigned to it (via `get-issues-for-persona --review`).
 
-```
-lucos-issue-manager, work on your issues
-```
+### lucos-issue-manager
 
-## lucos-code-reviewer
-
-Reviews open PRs and works on its assigned issues.
+Triages issues (unlabelled, updated since last review, or routed back to it). Uses its own triage script rather than `get-issues-for-persona`.
 
 ```
-lucos-code-reviewer, work on your issues
+lucos-issue-manager, review your issues
 ```
 
-This runs both PR discovery and issue discovery in a single session.
+### lucos-code-reviewer
 
-## lucos-architect
-
-Works on issues labelled `owner:lucos-architect`.
+Reviews open PRs and reviews its assigned issues.
 
 ```
-lucos-architect, work on your issues
+lucos-code-reviewer, review your issues
 ```
 
-## lucos-system-administrator
+### lucos-architect
 
-Works on issues labelled `owner:lucos-system-administrator`.
-
-```
-lucos-system-administrator, work on your issues
-```
-
-## lucos-security
-
-Works on issues labelled `owner:lucos-security`.
+Reviews `needs-refining` issues labelled `owner:lucos-architect`.
 
 ```
-lucos-security, work on your issues
+lucos-architect, review your issues
 ```
 
-## lucos-site-reliability
+### lucos-system-administrator
 
-Works on issues labelled `owner:lucos-site-reliability`.
+Reviews `needs-refining` issues labelled `owner:lucos-system-administrator`.
 
 ```
-lucos-site-reliability, work on your issues
+lucos-system-administrator, review your issues
+```
+
+### lucos-security
+
+Reviews dependabot alerts, then reviews `needs-refining` issues labelled `owner:lucos-security`.
+
+```
+lucos-security, review your issues
+```
+
+### lucos-site-reliability
+
+Reviews `needs-refining` issues labelled `owner:lucos-site-reliability`.
+
+```
+lucos-site-reliability, review your issues
 ```
 
 ---
 
-## Picking up implementation work
+## Implementing issues
 
-The prompts above are for **review and design work** -- triaging issues, posting designs, providing specialist input. Implementation work (writing code, opening PRs) uses a separate prompt to ensure only one issue is worked on at a time.
+Implementation uses a separate prompt to ensure only one issue is worked on at a time. Each agent implements `agent-approved` issues assigned to it (via `get-issues-for-persona --implement`).
 
-### Individual agents
-
-Tell a specific agent to pick up and implement the single highest-priority issue in its queue:
+Tell a specific agent to implement the single highest-priority issue in its queue:
 
 ```
-lucos-developer, pick up your next issue
+lucos-developer, implement your next issue
 ```
 
 ```
-lucos-system-administrator, pick up your next issue
+lucos-system-administrator, implement your next issue
 ```
 
 ```
-lucos-site-reliability, pick up your next issue
+lucos-site-reliability, implement your next issue
 ```
 
 ```
-lucos-security, pick up your next issue
+lucos-security, implement your next issue
 ```
 
 The agent will:
-1. Query its assigned issues (`owner:<persona>` + `agent-approved`, excluding `status:blocked`).
-2. Sort by priority (`priority:high` first, then `priority:medium`, then `priority:low`, then unprioritised), then by age (oldest first within same priority).
-3. Pick the top one, post a starting comment, implement, and open a PR.
-4. Stop after that one issue.
+1. Run `get-issues-for-persona --implement <persona>`, which returns the single highest-priority `agent-approved`, non-blocked issue.
+2. Post a starting comment, implement, and open a PR.
+3. Stop after that one issue.
 
 ### Notes
 
 - `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
-- The "pick up next issue" prompt is deliberately separate from "work on your issues" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
-- Only issues with `agent-approved` (and without `status:blocked`) are eligible for pickup. Issues with `needs-refining` are review/design work, not implementation.
+- The "implement" prompt is deliberately separate from "review" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
+- The `--review` and `--implement` flags return non-overlapping sets of issues, so there is no ambiguity about what an agent should do with the issues it receives.
