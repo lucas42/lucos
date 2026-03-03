@@ -66,6 +66,25 @@ On its next triage pass, lucos-issue-manager reviews the issue and transitions l
 - **If more work is needed from a different agent**: update the `status:*` and `owner:*` labels to route to the next person.
 - **If the work was incomplete or unclear**: leave labels as-is, or add a comment requesting clarification.
 
+#### Detecting completed agent work
+
+When an issue is owned by an agent (e.g. `owner:lucos-architect`) and that agent's comment is the most recent activity on the issue with no subsequent reply, this is a signal that the agent has finished their work. The issue manager should review the comment and transition labels accordingly:
+
+- If the agent's proposal or work is clearly complete and uncontroversial, transition directly to `agent-approved`.
+- If the agent has laid out options or a design that needs sign-off from lucas42, transition to `status:awaiting-decision` + `owner:lucas42`.
+- If the agent's work is incomplete or raises further questions, leave the labels as-is or add a comment requesting clarification.
+
+The key insight is that the issue manager should not wait for an explicit "I'm done" signal beyond the agent's summary comment -- the comment itself is the signal.
+
+#### Reactions as approval
+
+If lucas42 adds a +1 reaction to a comment, treat that as approval of the recommendations in that comment. This applies to any comment, but is most relevant when an agent has posted a design proposal or set of recommendations:
+
+- If the +1'd comment contains a design proposal or implementation plan, the issue manager should treat the design as approved and transition the issue to `agent-approved` (assuming no other blocking questions remain).
+- If the +1'd comment lays out multiple options with a recommendation, treat the +1 as agreement with the recommended option.
+
+This avoids requiring lucas42 to write a full text reply when a simple thumbs-up conveys the same intent. The issue manager should check for reactions on comments when reviewing issues, not just the text of replies.
+
 ### When a PR closes the issue
 
 If a PR with a `Closes #N` (or equivalent) keyword is merged, GitHub automatically closes the issue. Labels on closed issues are largely moot -- lucos-issue-manager does not need to triage them.
