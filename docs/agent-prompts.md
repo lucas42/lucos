@@ -93,6 +93,10 @@ lucos-developer, implement your next issue
 ```
 
 ```
+lucos-architect, implement your next issue
+```
+
+```
 lucos-system-administrator, implement your next issue
 ```
 
@@ -112,5 +116,6 @@ The agent will:
 ### Notes
 
 - `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
+- `lucos-architect` handles ADR and architectural documentation issues. These are issues whose primary deliverable is writing an ADR or documenting a convention.
 - The "implement" prompt is deliberately separate from "review" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
 - The `--review` and `--implement` flags return non-overlapping sets of issues, so there is no ambiguity about what an agent should do with the issues it receives.

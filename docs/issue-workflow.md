@@ -36,6 +36,7 @@ An `agent-approved` issue has an **owner** label (who will implement it) and a *
 When lucos-issue-manager marks an issue `agent-approved`, it also assigns who will implement it:
 
 - **Default**: `owner:lucos-developer`
+- **ADRs and architectural documentation** (writing ADRs, documenting conventions): `owner:lucos-architect`
 - **Purely infrastructure** (Docker, deployment, server setup): `owner:lucos-system-administrator`
 - **Purely monitoring/logging/pipelines**: `owner:lucos-site-reliability`
 - **Purely security** (auth setup, vulnerability remediation): `owner:lucos-security`
@@ -79,7 +80,7 @@ When a review agent (architect, sysadmin, SRE, security, code-reviewer) picks up
 
 ### Implementation agents
 
-When an implementation agent (developer, sysadmin, SRE, security) picks up an `agent-approved` issue:
+When an implementation agent (developer, architect, sysadmin, SRE, security) picks up an `agent-approved` issue:
 
 1. Post a starting comment explaining their approach.
 2. Create a branch, implement, test, open a PR with `Closes #N`.
