@@ -30,6 +30,8 @@ Applied alongside `needs-refining` to indicate **who should look at the issue ne
 | `owner:lucos-system-administrator` | Light teal (`#bfdadc`) | Infrastructure/ops -- Docker config, deployment, server setup. |
 | `owner:lucos-site-reliability` | Cream (`#fef2c0`) | SRE -- monitoring, alerting, reliability, performance. |
 | `owner:lucos-security` | Light pink (`#f9d0c4`) | Cybersecurity -- authentication, authorisation, data protection, vulnerabilities. |
+| `owner:lucos-code-reviewer` | | Code review -- routing issues that require the code reviewer's attention. |
+| `owner:lucos-issue-manager` | | Issue management -- routing issues back to the issue manager for triage. |
 
 ## How they work together
 
@@ -40,6 +42,37 @@ Every `needs-refining` issue should have exactly one **status** label and one **
 - `needs-refining` + `status:awaiting-decision` + `owner:lucas42` -- options are on the table; lucas42 just needs to pick one.
 
 The key principle: only route to `owner:lucas42` when his input is genuinely needed. If preparatory work can be done by an agent first, route it there with `status:needs-design`.
+
+## Label Management Workflow
+
+**lucos-issue-manager is the sole agent responsible for managing labels.** No other agent should add, remove, or change labels on an issue. This is a deliberate design choice to avoid conflicting label states and ensure there is a single, consistent view of each issue's status.
+
+### Owner agents (system-administrator, architect, code-reviewer, security, site-reliability)
+
+When an owner agent picks up an issue assigned to them via an `owner:*` label, their workflow is:
+
+1. Read the full issue -- body, all comments, any linked PRs.
+2. Do the work: post a design proposal, raise a sub-issue, write a PR, provide a security assessment, or whatever the issue calls for.
+3. Post a summary comment on the issue describing:
+   - What was done
+   - What the agent believes the next step is (e.g. "I've laid out three options above -- a decision is needed before implementation can begin")
+4. **Do not touch any labels.** Leave label management entirely to lucos-issue-manager.
+
+### lucos-issue-manager
+
+On its next triage pass, lucos-issue-manager reviews the issue and transitions labels based on the current state:
+
+- **If the issue is ready to work on**: remove `needs-refining`, the current `status:*` label, and the `owner:*` label; add `agent-approved`.
+- **If more work is needed from a different agent**: update the `status:*` and `owner:*` labels to route to the next person.
+- **If the work was incomplete or unclear**: leave labels as-is, or add a comment requesting clarification.
+
+### When a PR closes the issue
+
+If a PR with a `Closes #N` (or equivalent) keyword is merged, GitHub automatically closes the issue. Labels on closed issues are largely moot -- lucos-issue-manager does not need to triage them.
+
+### Why this separation exists
+
+Having a single agent own all label transitions means there is always a consistent, auditable record of why an issue is in its current state. Owner agents doing their own label management risks conflicting state -- for example, an agent marking something `agent-approved` immediately after doing design work, before anyone has verified the design is sufficient. Routing everything back through lucos-issue-manager provides that checkpoint.
 
 ## Repositories
 
