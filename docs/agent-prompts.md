@@ -75,3 +75,41 @@ Works on issues labelled `owner:lucos-site-reliability`.
 ```
 lucos-site-reliability, work on your issues
 ```
+
+---
+
+## Picking up implementation work
+
+The prompts above are for **review and design work** -- triaging issues, posting designs, providing specialist input. Implementation work (writing code, opening PRs) uses a separate prompt to ensure only one issue is worked on at a time.
+
+### Individual agents
+
+Tell a specific agent to pick up and implement the single highest-priority issue in its queue:
+
+```
+lucos-developer, pick up your next issue
+```
+
+```
+lucos-system-administrator, pick up your next issue
+```
+
+```
+lucos-site-reliability, pick up your next issue
+```
+
+```
+lucos-security, pick up your next issue
+```
+
+The agent will:
+1. Query its assigned issues (`owner:<persona>` + `agent-approved`, excluding `status:blocked`).
+2. Sort by priority (`priority:high` first, then `priority:medium`, then `priority:low`, then unprioritised), then by age (oldest first within same priority).
+3. Pick the top one, post a starting comment, implement, and open a PR.
+4. Stop after that one issue.
+
+### Notes
+
+- `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
+- The "pick up next issue" prompt is deliberately separate from "work on your issues" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
+- Only issues with `agent-approved` (and without `status:blocked`) are eligible for pickup. Issues with `needs-refining` are review/design work, not implementation.
