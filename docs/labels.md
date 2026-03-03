@@ -43,13 +43,25 @@ Every `needs-refining` issue should have exactly one **status** label and one **
 
 The key principle: only route to `owner:lucas42` when his input is genuinely needed. If preparatory work can be done by an agent first, route it there with `status:needs-design`.
 
-### SRE follow-up on observability issues
+### Specialist follow-up routing
+
+Some issues need review from a specialist agent **after** the primary owner has finished their work, but **before** the issue is marked `agent-approved`. This applies to two domains: observability/reliability (SRE) and security.
+
+#### SRE follow-up on observability issues
 
 When an issue touches **monitoring, logging, observability, or reliability**, it should be routed to the appropriate primary owner as normal (e.g. `owner:lucos-architect` for design, `owner:lucos-system-administrator` for infrastructure). However, after the primary owner's work is complete, the issue is **re-routed to `owner:lucos-site-reliability`** for SRE review before being marked `agent-approved`.
 
 This also applies mid-lifecycle: if observability or reliability concerns are raised in a comment after the initial triage (e.g. an architect proposes a design and a reliability concern is flagged in follow-up), the issue is routed to SRE for review regardless of the original topic.
 
 The goal is to ensure SRE always gets to weigh in on issues that affect monitoring, logging, or system reliability -- without displacing the primary owner who does the initial work.
+
+#### Security follow-up on security-sensitive issues
+
+When an issue touches **authentication, authorisation, data protection, secret management, or other security topics**, it should be routed to the appropriate primary owner as normal. However, after the primary owner's work is complete, the issue is **re-routed to `owner:lucos-security`** for security review before being marked `agent-approved`.
+
+This also applies mid-lifecycle: if security concerns are raised in a comment after the initial triage (e.g. an architect proposes a design and someone raises an authentication or data protection concern in follow-up), the issue is routed to security for review regardless of the original topic.
+
+The goal is to ensure the security agent always gets to weigh in on issues that affect authentication, authorisation, data handling, or other security-sensitive areas -- without displacing the primary owner who does the initial work.
 
 ## Label Management Workflow
 
