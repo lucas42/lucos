@@ -2,6 +2,20 @@
 
 How to get each agent to discover and work through its own backlog.
 
+---
+
+## All agents at once
+
+Launches all six agents in parallel, each working through its own backlog concurrently.
+
+```
+all agents, work on your issues
+```
+
+This is equivalent to running each individual agent prompt below simultaneously. The dispatcher will launch all six agents using parallel Task tool calls -- no sequential execution, no clarification needed.
+
+---
+
 ## lucos-issue-manager
 
 Triages issues (unlabelled, updated since last review, or routed back to it).
