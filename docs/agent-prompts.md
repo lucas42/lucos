@@ -6,13 +6,23 @@ How to get each agent to discover and work through its own backlog.
 
 ## All agents at once
 
-Launches all six agents in parallel, each working through its own backlog concurrently.
+Dispatches all agents in three sequential phases. The dispatcher must wait for each phase to fully complete before starting the next.
 
 ```
 all agents, work on your issues
 ```
 
-This is equivalent to running each individual agent prompt below simultaneously. The dispatcher will launch all six agents using parallel Task tool calls -- no sequential execution, no clarification needed.
+**Phase 1** (parallel): `lucos-issue-manager` + `lucos-code-reviewer`
+
+The issue manager runs first to assign `owner:` labels to unowned issues, so that Phase 2 agents pick up fresh work. The code reviewer is independent of the issue pipeline and runs in parallel with it.
+
+**Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability`
+
+The four specialist agents work through their assigned backlogs. They often add comments or partial work rather than closing issues outright, which may leave issues needing reassignment.
+
+**Phase 3** (after Phase 2): `lucos-issue-manager` again
+
+A second pass by the issue manager to review anything Phase 2 agents touched, reassign or transition labels, and tidy up issues left in an intermediate state.
 
 ---
 
