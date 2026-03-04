@@ -49,6 +49,8 @@ Issues are picked up in priority order: `priority:high` first, then `priority:me
 
 Issues without a priority label have not yet been prioritised -- distinct from `priority:medium`.
 
+For strategic guidance on which areas of work map to which priority level, see [priorities.md](priorities.md).
+
 ### Blocked issues
 
 `agent-approved` + `status:blocked` means the issue is well-defined but waiting on another issue. It should not be picked up. When the blocking issue is closed, lucos-issue-manager removes `status:blocked`.
