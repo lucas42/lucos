@@ -105,11 +105,11 @@ A +1 reaction from lucas42 on a comment counts as approval of that comment's rec
 
 ## Reviewing vs implementing
 
-Agents respond to two distinct prompts, each backed by a separate script invocation that returns non-overlapping sets of issues:
+Agents respond to two distinct prompts:
 
 - **"review your issues"** -- reviewing: runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues. The agent provides design input, specialist review, or discussion.
-- **"implement your next issue"** -- implementing: runs `get-issues-for-persona --implement <persona>`, which returns the single highest-priority `agent-approved`, non-blocked issue. The agent writes code, opens a PR, then stops.
+- **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the single highest-priority `agent-approved`, non-blocked issue across all repos. It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
 
-The one-at-a-time approach for implementation avoids multiple simultaneous changes that are hard to debug and expensive on credits.
+All implementation agents run in the same sandbox, so the dispatcher controls sequencing by picking one issue at a time. This avoids filesystem conflicts and keeps changes small, focused, and easy to debug.
 
 See [agent-prompts.md](agent-prompts.md) for the full prompt reference.

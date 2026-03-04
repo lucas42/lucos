@@ -2,7 +2,7 @@
 
 How to get each agent to discover and work through its own backlog.
 
-There are two distinct types of work: **reviewing** (design input, specialist review, triage) and **implementing** (writing code, opening PRs). Each has its own prompt and its own script invocation, returning non-overlapping sets of issues.
+There are two distinct types of work: **reviewing** (design input, specialist review, triage) and **implementing** (writing code, opening PRs). Reviewing uses a per-persona script; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
 
 ---
 
@@ -84,38 +84,25 @@ lucos-site-reliability, review your issues
 
 ## Implementing issues
 
-Implementation uses a separate prompt to ensure only one issue is worked on at a time. Each agent implements `agent-approved` issues assigned to it (via `get-issues-for-persona --implement`).
-
-Tell a specific agent to implement the single highest-priority issue in its queue:
+Implementation is driven by the dispatcher, not individual agents. A single global script finds the highest-priority issue across all repos and the dispatcher routes it to the correct persona.
 
 ```
-lucos-developer, implement your next issue
+implement the next issue
 ```
 
-```
-lucos-architect, implement your next issue
-```
+The dispatcher will:
+1. Run `get-next-implementation-issue`, which searches across all repos for the single highest-priority `agent-approved`, non-blocked issue with an `owner:*` label.
+2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` → launch `lucos-developer`).
+3. Pass the specific issue URL to the persona (e.g. "implement issue https://github.com/lucas42/lucos_photos/issues/42").
+4. The persona posts a starting comment, implements, and opens a PR.
+5. After the persona finishes, the dispatcher checks for a new PR and launches `lucos-code-reviewer` to review it if one was created.
 
-```
-lucos-system-administrator, implement your next issue
-```
+### Why the dispatcher picks the issue
 
-```
-lucos-site-reliability, implement your next issue
-```
-
-```
-lucos-security, implement your next issue
-```
-
-The agent will:
-1. Run `get-issues-for-persona --implement <persona>`, which returns the single highest-priority `agent-approved`, non-blocked issue.
-2. Post a starting comment, implement, and open a PR.
-3. Stop after that one issue.
+All implementation agents run in the same sandbox. If multiple personas were dispatched to different repos simultaneously, their local filesystem writes could conflict. The dispatcher controls sequencing by picking one issue at a time.
 
 ### Notes
 
 - `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
 - `lucos-architect` handles ADR and architectural documentation issues. These are issues whose primary deliverable is writing an ADR or documenting a convention.
 - The "implement" prompt is deliberately separate from "review" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
-- The `--review` and `--implement` flags return non-overlapping sets of issues, so there is no ambiguity about what an agent should do with the issues it receives.
