@@ -24,3 +24,7 @@ This is an incomplete list of lucos services:
 ## Libraries
 * **[navbar](https://github.com/lucas42/lucos_navbar)** Navigation bar, giving consistent styling across apps.
 * **[time_component](https://github.com/lucas42/lucos_time_component)** Displays the time, NTP-synced to lucos_time
+
+## Documentation
+* Architecture Decision Records: [`docs/adr/`](docs/adr/)
+* Issue workflow and labels: [`docs/`](docs/)
