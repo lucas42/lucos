@@ -95,7 +95,18 @@ The dispatcher will:
 2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` → launch `lucos-developer`).
 3. Pass the specific issue URL to the persona (e.g. "implement issue https://github.com/lucas42/lucos_photos/issues/42").
 4. The persona posts a starting comment, implements, and opens a PR.
-5. After the persona finishes, the dispatcher checks for a new PR and launches `lucos-code-reviewer` to review it if one was created.
+5. After the persona finishes, the dispatcher checks for a new PR and enters a **review loop** if one was created.
+
+### Review loop
+
+After the implementation persona opens a PR, the dispatcher manages a back-and-forth between the code reviewer and the implementation persona:
+
+1. Launch `lucos-code-reviewer` to review the PR.
+2. If the reviewer **approves**, the loop is done.
+3. If the reviewer **requests changes**, send the PR back to the implementation persona with "address the code review feedback on PR {url}". The persona reads the review comments, pushes fixes, and returns.
+4. Go back to step 1.
+
+This loop runs for up to **5 iterations**. If the PR is still not approved after 5 rounds, the dispatcher stops and flags it for lucas42 to review — this likely indicates a mismatch in expectations that needs human judgement.
 
 ### Why the dispatcher picks the issue
 
