@@ -20,9 +20,9 @@ This is a custom Claude Code skill (defined in `~/.claude/skills/review/SKILL.md
 
 The issue manager triages first to assign `owner:` labels to unowned issues, so that Phase 2 agents pick up fresh work. The code reviewer is independent of the issue pipeline and runs in parallel with it.
 
-**Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability`
+**Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability` + `lucos-issue-manager` (review) + `lucos-developer` (review)
 
-The four specialist agents review their assigned backlogs. They post design proposals, comments, or assessments, which may leave issues needing reassignment.
+The six agents review their assigned backlogs. Specialist agents post design proposals, comments, or assessments. The issue manager reviews workflow/process issues assigned to it (distinct from its Phase 1/3 triage role). The developer reviews issues where implementation input is needed during the design phase. All may leave issues needing reassignment.
 
 **Phase 3** (after Phase 2): `lucos-issue-manager` again (triage)
 
@@ -34,12 +34,20 @@ A second triage pass by the issue manager to handle anything Phase 2 agents touc
 
 The issue manager **triages** issues (assessing, labelling, routing). All other agents **review** `needs-refining` issues assigned to them (via `get-issues-for-persona --review`).
 
-### lucos-issue-manager (triage)
+### lucos-issue-manager (triage + review)
 
-Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`) rather than `get-issues-for-persona`.
+Responds to two distinct prompts:
+
+**Triage**: Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`) rather than `get-issues-for-persona`.
 
 ```
 lucos-issue-manager, triage your issues
+```
+
+**Review**: Reviews `needs-refining` issues labelled `owner:lucos-issue-manager`. These are typically workflow, process documentation, or issue convention issues.
+
+```
+lucos-issue-manager, review your issues
 ```
 
 ### lucos-code-reviewer
@@ -80,6 +88,14 @@ Reviews `needs-refining` issues labelled `owner:lucos-site-reliability`.
 
 ```
 lucos-site-reliability, review your issues
+```
+
+### lucos-developer
+
+Reviews `needs-refining` issues labelled `owner:lucos-developer`. Rare -- used when implementation input is needed during the design phase.
+
+```
+lucos-developer, review your issues
 ```
 
 ---

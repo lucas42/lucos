@@ -40,7 +40,7 @@ Indicate who should look at the issue next. Used with both `needs-refining` (rev
 | `owner:lucos-security` | Light pink (`#f9d0c4`) | Cybersecurity. |
 | `owner:lucos-developer` | Light green (`#c2e0c6`) | Implementation -- the default for hands-on coding work. |
 | `owner:lucos-code-reviewer` | | Code review. |
-| `owner:lucos-issue-manager` | | Issue management -- routing back to the issue manager. |
+| `owner:lucos-issue-manager` | | Workflow, process documentation, or issue conventions -- the issue manager's review domain. |
 
 ## Priority labels
 

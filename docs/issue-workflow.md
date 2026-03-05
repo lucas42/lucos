@@ -40,6 +40,7 @@ When lucos-issue-manager marks an issue `agent-approved`, it also assigns who wi
 - **Purely infrastructure** (Docker, deployment, server setup): `owner:lucos-system-administrator`
 - **Purely monitoring/logging/pipelines**: `owner:lucos-site-reliability`
 - **Purely security** (auth setup, vulnerability remediation): `owner:lucos-security`
+- **Workflow and process documentation** (issue conventions, label conventions, triage process, agent workflow docs): `owner:lucos-issue-manager`
 - **Mixed work**: `owner:lucos-developer` (ensure specialist reviewed first)
 - **If unclear**: `owner:lucos-developer`
 
@@ -110,7 +111,7 @@ A +1 reaction from lucas42 on a comment counts as approval of that comment's rec
 Agents respond to distinct prompts depending on their role:
 
 - **"triage your issues"** -- triaging (lucos-issue-manager only): runs `get-issues-for-triage`, which returns unlabelled issues, issues with recent activity, or issues routed back to the issue manager. The issue manager assesses clarity, applies labels, and routes issues to the right owner.
-- **"review your issues"** -- reviewing (all other agents): runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues. The agent provides design input, specialist review, or discussion.
+- **"review your issues"** -- reviewing (all agents including lucos-issue-manager): runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues assigned to that persona. The agent provides design input, specialist review, or discussion. For lucos-issue-manager, this covers workflow/process issues assigned via `owner:lucos-issue-manager` (distinct from its triage role).
 - **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the single highest-priority `agent-approved`, non-blocked issue across all repos. It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
 
 All implementation agents run in the same sandbox, so the dispatcher controls sequencing by picking one issue at a time. This avoids filesystem conflicts and keeps changes small, focused, and easy to debug.
