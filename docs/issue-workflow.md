@@ -15,11 +15,11 @@ Created  -->  needs-refining  -->  agent-approved  -->  PR merged  -->  Closed
 
 ### Refinement phase
 
-A `needs-refining` issue has one **status** label (why it's blocked) and one **owner** label (who should act next):
+A `needs-refining` issue has one **status** label (why it's blocked), one **owner** label (who should act next), and a **priority** label:
 
-- `needs-refining` + `status:ideation` + `owner:lucas42` -- vague idea; revisit when relevant.
-- `needs-refining` + `status:needs-design` + `owner:lucos-architect` -- clear goal; architect fleshes out the approach.
-- `needs-refining` + `status:awaiting-decision` + `owner:lucas42` -- options laid out; lucas42 picks one.
+- `needs-refining` + `status:ideation` + `owner:lucas42` + `priority:low` -- vague idea; revisit when relevant.
+- `needs-refining` + `status:needs-design` + `owner:lucos-architect` + `priority:medium` -- clear goal; architect fleshes out the approach.
+- `needs-refining` + `status:awaiting-decision` + `owner:lucas42` + `priority:high` -- options laid out; lucas42 picks one.
 
 **Principle**: only route to `owner:lucas42` when his input is genuinely needed. If an agent can do preparatory work first, route it there.
 
@@ -30,6 +30,16 @@ An `agent-approved` issue has an **owner** label (who will implement it) and a *
 - `agent-approved` + `owner:lucos-developer` + `priority:high` -- ready for the developer, high priority.
 - `agent-approved` + `owner:lucos-system-administrator` + `priority:medium` -- infra work, standard priority.
 - `agent-approved` + `owner:lucos-developer` + `status:blocked` -- ready but waiting on a dependency.
+
+### Priority across the lifecycle
+
+Priority labels are assigned to **all issues during triage**, not just `agent-approved` ones. A `needs-refining` issue also gets a `priority:*` label so that refinement work is prioritised too.
+
+When lucas42 gives input on an issue (e.g. a comment, a decision, or a reaction), the priority is re-assessed -- the scope or urgency may have changed, or lucas42 may have explicitly stated a priority.
+
+**Priority override rules:**
+- lucas42's explicit priority calls override the strategic priorities framework (lucas42 is the repo owner and has final say).
+- Priority calls from others (including agents) are considered within the context of the strategic priorities defined in [priorities.md](priorities.md) -- they do not automatically override.
 
 ### Implementation assignment
 

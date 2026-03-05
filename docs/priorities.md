@@ -36,6 +36,8 @@ All work paused. Being retired in favour of docker buildx multi-platform builds 
 
 ## How to use this file
 
+Priority labels are assigned to **all issues during triage** -- including `needs-refining` issues, not just `agent-approved` ones. This ensures refinement work is also prioritised.
+
 When assigning priority labels during triage:
 
 - **`priority:high`**: Issues that fall under priority 1 (agent workflows), or are critical/urgent regardless of area.
@@ -45,3 +47,12 @@ When assigning priority labels during triage:
 If an issue in a paused repository has a genuine critical security concern, it may still warrant `priority:high` -- use judgement.
 
 Within a priority level, oldest issues are picked up first.
+
+### Re-assessment after lucas42 input
+
+When lucas42 gives input on an issue (e.g. a comment, a decision, or a reaction), re-assess the priority. The scope or urgency may have changed, or lucas42 may have explicitly stated a priority.
+
+### Priority override rules
+
+- **lucas42's priority calls override this file.** lucas42 is the repo owner and has final say. If lucas42 explicitly states a priority level for an issue, apply that priority regardless of what this document says.
+- **Priority calls from others** (including agents) should be considered within the context of the strategic priorities defined here. They do not automatically override this framework -- they are input, not directives.
