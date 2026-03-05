@@ -107,6 +107,16 @@ When an agent's comment is the most recent activity on an issue with no subseque
 
 A +1 reaction from lucas42 on a comment counts as approval of that comment's recommendations. If the +1'd comment contains a design proposal, treat the design as approved. If it lays out options with a recommendation, treat the +1 as agreement with the recommended option.
 
+## Ops check duplicate prevention
+
+Personas that run ops checks (lucos-security, lucos-site-reliability, lucos-system-administrator) must always search for existing open issues before creating new ones. The rules are:
+
+1. **If an open issue already exists** for the same problem: take no action. Do not create a duplicate.
+2. **If an open issue exists but new information has been discovered** (e.g. new symptoms, a higher severity, additional affected files): add a comment to the existing issue with the new information.
+3. **If no open issue exists**: create a new one following the check-specific instructions.
+
+This prevents duplicate tickets from accumulating when multiple ops check runs detect the same underlying problem.
+
 ## Triaging vs reviewing vs implementing
 
 Agents respond to distinct prompts depending on their role:
