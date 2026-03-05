@@ -11,8 +11,10 @@ There are two distinct types of work: **reviewing** (design input, specialist re
 Dispatches all agents in three sequential phases for review/triage work. The dispatcher must wait for each phase to fully complete before starting the next.
 
 ```
-all agents, review your issues
+/review
 ```
+
+This is a custom Claude Code skill (defined in `~/.claude/skills/review/SKILL.md`). The legacy prompt `all agents, review your issues` also works.
 
 **Phase 1** (parallel): `lucos-issue-manager` + `lucos-code-reviewer`
 
@@ -87,8 +89,10 @@ lucos-site-reliability, review your issues
 Implementation is driven by the dispatcher, not individual agents. A single global script finds the highest-priority issue across all repos and the dispatcher routes it to the correct persona.
 
 ```
-implement the next issue
+/next
 ```
+
+This is a custom Claude Code skill (defined in `~/.claude/skills/next/SKILL.md`). The legacy prompt `implement the next issue` also works.
 
 The dispatcher will:
 1. Run `get-next-implementation-issue`, which searches across all repos for the single highest-priority `agent-approved`, non-blocked issue with an `owner:*` label.
