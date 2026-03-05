@@ -39,6 +39,7 @@ When lucos-issue-manager marks an issue `agent-approved`, it also assigns who wi
 - **ADRs and architectural documentation** (writing ADRs, documenting conventions): `owner:lucos-architect`
 - **Purely infrastructure** (Docker, deployment, server setup): `owner:lucos-system-administrator`
 - **Purely monitoring/logging/pipelines**: `owner:lucos-site-reliability`
+- **Incident management** (incident response, reporting, post-mortems, tracking): `owner:lucos-site-reliability`
 - **Purely security** (auth setup, vulnerability remediation): `owner:lucos-security`
 - **Workflow and process documentation** (issue conventions, label conventions, triage process, agent workflow docs): `owner:lucos-issue-manager`
 - **Mixed work**: `owner:lucos-developer` (ensure specialist reviewed first)
@@ -62,7 +63,7 @@ Some issues need specialist review after the primary owner finishes but before `
 
 ### SRE follow-up
 
-Issues touching **monitoring, logging, observability, or reliability** get re-routed to `owner:lucos-site-reliability` for SRE review after the primary owner's work is complete. Also applies mid-lifecycle if reliability concerns are raised in comments.
+Issues touching **monitoring, logging, observability, reliability, or incident management** (incident response, reporting, post-mortems, tracking) get re-routed to `owner:lucos-site-reliability` for SRE review after the primary owner's work is complete. Also applies mid-lifecycle if reliability or incident management concerns are raised in comments.
 
 ### Security follow-up
 

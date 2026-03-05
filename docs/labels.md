@@ -36,7 +36,7 @@ Indicate who should look at the issue next. Used with both `needs-refining` (rev
 | `owner:lucas42` | Light olive (`#e4e669`) | Repo owner -- product direction, priority calls, questions only he can answer. |
 | `owner:lucos-architect` | Light purple (`#d4c5f9`) | Architectural design/review, or ADR/documentation implementation. |
 | `owner:lucos-system-administrator` | Light teal (`#bfdadc`) | Infrastructure/ops. |
-| `owner:lucos-site-reliability` | Cream (`#fef2c0`) | SRE -- monitoring, alerting, reliability, performance. |
+| `owner:lucos-site-reliability` | Cream (`#fef2c0`) | SRE -- monitoring, alerting, reliability, performance, incident management. |
 | `owner:lucos-security` | Light pink (`#f9d0c4`) | Cybersecurity. |
 | `owner:lucos-developer` | Light green (`#c2e0c6`) | Implementation -- the default for hands-on coding work. |
 | `owner:lucos-code-reviewer` | | Code review. |
