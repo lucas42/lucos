@@ -2,7 +2,7 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when assigning `priority:*` labels during triage.
 
-**Last updated**: 2026-03-04
+**Last updated**: 2026-03-05
 
 ---
 
@@ -31,10 +31,6 @@ All work paused except critical security updates. The service is planned to be r
 ### pici
 
 All work paused. Being retired in favour of docker buildx multi-platform builds (see [lucos_deploy_orb#9](https://github.com/lucas42/lucos_deploy_orb/issues/9)).
-
-### lucos_repos
-
-All work paused. The service is not currently being used for anything. Its purpose needs to be re-thought holistically before adding new features.
 
 ---
 
