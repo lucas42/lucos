@@ -105,11 +105,12 @@ When an agent's comment is the most recent activity on an issue with no subseque
 
 A +1 reaction from lucas42 on a comment counts as approval of that comment's recommendations. If the +1'd comment contains a design proposal, treat the design as approved. If it lays out options with a recommendation, treat the +1 as agreement with the recommended option.
 
-## Reviewing vs implementing
+## Triaging vs reviewing vs implementing
 
-Agents respond to two distinct prompts:
+Agents respond to distinct prompts depending on their role:
 
-- **"review your issues"** -- reviewing: runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues. The agent provides design input, specialist review, or discussion.
+- **"triage your issues"** -- triaging (lucos-issue-manager only): runs `get-issues-for-triage`, which returns unlabelled issues, issues with recent activity, or issues routed back to the issue manager. The issue manager assesses clarity, applies labels, and routes issues to the right owner.
+- **"review your issues"** -- reviewing (all other agents): runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues. The agent provides design input, specialist review, or discussion.
 - **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the single highest-priority `agent-approved`, non-blocked issue across all repos. It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
 
 All implementation agents run in the same sandbox, so the dispatcher controls sequencing by picking one issue at a time. This avoids filesystem conflicts and keeps changes small, focused, and easy to debug.

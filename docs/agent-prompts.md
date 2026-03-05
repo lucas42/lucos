@@ -2,13 +2,13 @@
 
 How to get each agent to discover and work through its own backlog.
 
-There are two distinct types of work: **reviewing** (design input, specialist review, triage) and **implementing** (writing code, opening PRs). Reviewing uses a per-persona script; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
+There are three distinct types of work: **triaging** (lucos-issue-manager assessing issues, applying labels, and routing to the right owner), **reviewing** (specialist agents providing design input or assessment on assigned issues), and **implementing** (writing code, opening PRs). Triaging and reviewing each use per-persona scripts; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
 
 ---
 
-## All agents, review
+## All agents, triage and review
 
-Dispatches all agents in three sequential phases for review/triage work. The dispatcher must wait for each phase to fully complete before starting the next.
+Dispatches all agents in three sequential phases for triage and review work. The dispatcher must wait for each phase to fully complete before starting the next.
 
 ```
 /review
@@ -16,30 +16,30 @@ Dispatches all agents in three sequential phases for review/triage work. The dis
 
 This is a custom Claude Code skill (defined in `~/.claude/skills/review/SKILL.md`). The legacy prompt `all agents, review your issues` also works.
 
-**Phase 1** (parallel): `lucos-issue-manager` + `lucos-code-reviewer`
+**Phase 1** (parallel): `lucos-issue-manager` (triage) + `lucos-code-reviewer` (review)
 
-The issue manager runs first to assign `owner:` labels to unowned issues, so that Phase 2 agents pick up fresh work. The code reviewer is independent of the issue pipeline and runs in parallel with it.
+The issue manager triages first to assign `owner:` labels to unowned issues, so that Phase 2 agents pick up fresh work. The code reviewer is independent of the issue pipeline and runs in parallel with it.
 
 **Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability`
 
 The four specialist agents review their assigned backlogs. They post design proposals, comments, or assessments, which may leave issues needing reassignment.
 
-**Phase 3** (after Phase 2): `lucos-issue-manager` again
+**Phase 3** (after Phase 2): `lucos-issue-manager` again (triage)
 
-A second pass by the issue manager to review anything Phase 2 agents touched, reassign or transition labels, and tidy up issues left in an intermediate state.
+A second triage pass by the issue manager to handle anything Phase 2 agents touched, reassign or transition labels, and tidy up issues left in an intermediate state.
 
 ---
 
-## Reviewing issues
+## Triaging and reviewing issues
 
-Each agent reviews `needs-refining` issues assigned to it (via `get-issues-for-persona --review`).
+The issue manager **triages** issues (assessing, labelling, routing). All other agents **review** `needs-refining` issues assigned to them (via `get-issues-for-persona --review`).
 
-### lucos-issue-manager
+### lucos-issue-manager (triage)
 
-Triages issues (unlabelled, updated since last review, or routed back to it). Uses its own triage script rather than `get-issues-for-persona`.
+Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`) rather than `get-issues-for-persona`.
 
 ```
-lucos-issue-manager, review your issues
+lucos-issue-manager, triage your issues
 ```
 
 ### lucos-code-reviewer
