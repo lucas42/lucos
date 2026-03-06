@@ -40,13 +40,25 @@ Priority labels are assigned to **all issues during triage** -- including `needs
 
 When assigning priority labels during triage:
 
-- **`priority:high`**: Issues that fall under priority 1 (agent workflows), or are critical/urgent regardless of area.
+- **`priority:critical`**: A production service is completely down and users are affected right now. This is for full service outages only -- not for "very important" features, not for degraded performance, and not for bugs that have workarounds. If you are unsure whether something qualifies, it is not critical. See "Preventing priority inflation" below.
+- **`priority:high`**: Issues that fall under priority 1 (agent workflows), or are urgent regardless of area.
 - **`priority:medium`**: Issues that fall under priority 2 (lucos_photos and associated repos), or are important but not in the top priority area.
 - **`priority:low`**: Everything else, including issues in paused repositories.
 
 If an issue in a paused repository has a genuine critical security concern, it may still warrant `priority:high` -- use judgement.
 
 Within a priority level, oldest issues are picked up first.
+
+### Preventing priority inflation
+
+`priority:critical` exists to ensure live outages are always picked up ahead of everything else, no matter how old other issues are. To keep it effective:
+
+- **Do not use it for features**, no matter how important. Use `priority:high` instead.
+- **Do not use it for bugs that have workarounds.** If users can still accomplish their goal, it is not critical.
+- **Do not use it for degraded performance.** Slow is not down.
+- **Remove it as soon as the outage is resolved.** Critical issues should not linger -- they are either actively being fixed or already closed.
+
+If `priority:critical` is used too broadly, it loses its signal and the queue becomes indistinguishable from `priority:high`.
 
 ### Re-assessment after lucas42 input
 

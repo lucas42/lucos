@@ -46,6 +46,7 @@ Indicate who should look at the issue next. Used with both `needs-refining` (rev
 
 | Label | Colour | Meaning |
 |---|---|---|
+| `priority:critical` | Dark red (`#e11d48`) | Full service outage -- production is down and users are affected right now. Not for important features or bugs with workarounds. |
 | `priority:high` | Red (`#b60205`) | High impact; should be picked up soon. |
 | `priority:medium` | Yellow (`#fbca04`) | Standard priority; normal queue order. |
 | `priority:low` | Light blue (`#c5def5`) | Nice to have; pick up when queue is clear. |
