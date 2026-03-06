@@ -27,4 +27,5 @@ This is an incomplete list of lucos services:
 
 ## Documentation
 * Architecture Decision Records: [`docs/adr/`](docs/adr/)
+* Incident reports: [`docs/incidents/`](docs/incidents/)
 * Issue workflow and labels: [`docs/`](docs/)
