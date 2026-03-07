@@ -11,6 +11,12 @@ For how these labels work together in the issue lifecycle, see [issue-workflow.m
 | `agent-approved` | Green (`#0e8a16`) | Issue is clear, well-defined, and ready for implementation. |
 | `needs-refining` | Orange (`#d93f0b`) | Issue needs more work before it can be picked up. |
 
+## Automated labels
+
+| Label | Colour | Purpose |
+|---|---|---|
+| `audit-finding` | Grey (`#ededed`) | Applied automatically by the `lucos_repos` audit tool to issues it creates. Indicates the issue tracks a failing repository convention. See [ADR-0002](https://github.com/lucas42/lucos_repos/blob/main/docs/adr/0002-audit-issue-lifecycle.md) for the lifecycle. |
+
 ## Status labels
 
 ### Refinement statuses (used with `needs-refining`)

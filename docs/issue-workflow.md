@@ -127,6 +127,30 @@ Personas that run ops checks (lucos-security, lucos-site-reliability, lucos-syst
 
 This prevents duplicate tickets from accumulating when multiple ops check runs detect the same underlying problem.
 
+## Audit-finding issues
+
+Issues with the `audit-finding` label are created automatically by the `lucos_repos` audit tool when a repository convention fails. See [ADR-0002](https://github.com/lucas42/lucos_repos/blob/main/docs/adr/0002-audit-issue-lifecycle.md) for the full design.
+
+### How the audit tool works
+
+On each sweep (up to every 6 hours), for each repo + convention pair:
+
+| Convention result | Open issue exists? | Action |
+|---|---|---|
+| Pass | No | Do nothing |
+| Pass | Yes | Do nothing |
+| Fail | Yes (open) | Do nothing |
+| Fail | No (none or only closed) | Create a new issue |
+
+The audit tool **only creates issues**. It never closes, reopens, or comments on issues. The issue tracker is a notification mechanism, not the canonical record of compliance.
+
+### Triage implications
+
+- Triage `audit-finding` issues normally -- approve, route, and prioritise them like any other issue.
+- Issues are closed via the normal workflow (PR merge with closing keyword, or manual close). The audit tool will not close them.
+- If an issue is closed but the convention still fails, the next sweep creates a **new** issue (not a reopened one).
+- There is no suppression mechanism. If a convention does not apply to a repo, the convention's check function must encode that logic.
+
 ## Triaging vs reviewing vs implementing
 
 Agents respond to distinct prompts depending on their role:
