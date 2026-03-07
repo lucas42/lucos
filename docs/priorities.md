@@ -2,21 +2,23 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when assigning `priority:*` labels during triage.
 
-**Last updated**: 2026-03-05
+**Last updated**: 2026-03-07
 
 ---
 
 ## Active priorities (in order)
 
-### 1. LLM agent workflows
+### 1. lucos_photos and lucos_photos_android
 
-Tickets that enable or improve LLM agent workflows are the highest priority. This includes tooling, infrastructure, and process improvements that make agents more effective at triaging, reviewing, and implementing work.
+The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) are the highest priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements the top concern.
+
+Issues raised off the back of this launch (e.g. bugs discovered in production use, missing features noticed during real usage, performance issues with real data) should be treated as `priority:high`.
+
+### 2. LLM agent workflows
+
+Tickets that enable or improve LLM agent workflows are the second priority. This includes tooling, infrastructure, and process improvements that make agents more effective at triaging, reviewing, and implementing work.
 
 Examples: agent scripts, monitoring endpoints for agents, agent sandbox provisioning, workflow documentation.
-
-### 2. lucos_photos
-
-The `lucos_photos` project and its associated repositories (e.g. `lucos_photos_android`) are the next priority. This is the primary user-facing project under active development.
 
 ---
 
@@ -41,8 +43,8 @@ Priority labels are assigned to **all issues during triage** -- including `needs
 When assigning priority labels during triage:
 
 - **`priority:critical`**: A production service is completely down and users are affected right now. This is for full service outages only -- not for "very important" features, not for degraded performance, and not for bugs that have workarounds. If you are unsure whether something qualifies, it is not critical. See "Preventing priority inflation" below.
-- **`priority:high`**: Issues that fall under priority 1 (agent workflows), or are urgent regardless of area.
-- **`priority:medium`**: Issues that fall under priority 2 (lucos_photos and associated repos), or are important but not in the top priority area.
+- **`priority:high`**: Issues that fall under priority 1 (lucos_photos, lucos_photos_android, and associated repos), issues raised from the production launch, or are urgent regardless of area.
+- **`priority:medium`**: Issues that fall under priority 2 (agent workflows), or are important but not in the top priority area.
 - **`priority:low`**: Everything else, including issues in paused repositories.
 
 If an issue in a paused repository has a genuine critical security concern, it may still warrant `priority:high` -- use judgement.
