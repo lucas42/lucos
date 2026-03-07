@@ -1,10 +1,12 @@
 # Incident: lucos_repos CircleCI convention checks fail across all repos
 
-**Date:** 2026-03-07
-**Duration:** ~24 minutes (13:30 UTC to 13:54 UTC)
-**Severity:** Partial degradation
-**Services affected:** lucos_repos convention check system
-**Detected by:** lucos-site-reliability ops check / issue raised by agent immediately after PR #75 merged
+| Field | Value |
+|---|---|
+| **Date** | 2026-03-07 |
+| **Duration** | ~24 minutes (13:30 UTC to 13:54 UTC) |
+| **Severity** | Partial degradation |
+| **Services affected** | lucos_repos convention check system |
+| **Detected by** | lucos-site-reliability ops check / issue raised by agent immediately after PR #75 merged |
 
 Source issue: https://github.com/lucas42/lucos_repos/issues/80
 

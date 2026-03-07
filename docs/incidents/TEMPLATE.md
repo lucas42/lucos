@@ -1,10 +1,12 @@
 # Incident: [Short title]
 
-**Date:** YYYY-MM-DD
-**Duration:** ~X minutes / X hours (HH:MM UTC to HH:MM UTC)
-**Severity:** [Complete outage / Partial degradation / Data risk / Security]
-**Services affected:** [list of affected services]
-**Detected by:** [monitoring alert / user report / ops check / etc.]
+| Field | Value |
+|---|---|
+| **Date** | YYYY-MM-DD |
+| **Duration** | ~X minutes / X hours (HH:MM UTC to HH:MM UTC) |
+| **Severity** | Complete outage / Partial degradation / Data risk / Security |
+| **Services affected** | list of affected services |
+| **Detected by** | monitoring alert / user report / ops check / etc. |
 
 ---
 

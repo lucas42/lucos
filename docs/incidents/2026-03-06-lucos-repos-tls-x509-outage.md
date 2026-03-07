@@ -1,10 +1,12 @@
 # Incident: lucos_repos down — x509 TLS certificate verification failure
 
-**Date:** 2026-03-06
-**Duration:** ~39 minutes (00:18 UTC to 01:38 UTC on 2026-03-06, based on earliest/latest log entries)
-**Severity:** Complete service outage (repos.l42.eu returning 502 Bad Gateway)
-**Services affected:** lucos_repos (repos.l42.eu)
-**Detected by:** lucos-site-reliability ops check
+| Field | Value |
+|---|---|
+| **Date** | 2026-03-06 |
+| **Duration** | ~39 minutes (00:18 UTC to 01:38 UTC on 2026-03-06, based on earliest/latest log entries) |
+| **Severity** | Complete service outage (repos.l42.eu returning 502 Bad Gateway) |
+| **Services affected** | lucos_repos (repos.l42.eu) |
+| **Detected by** | lucos-site-reliability ops check |
 
 Source issue: [lucas42/lucos_repos#39](https://github.com/lucas42/lucos_repos/issues/39)
 

@@ -1,10 +1,12 @@
 # Incident: lucos_photos production outage after batch deployment following 13-hour CI break
 
-**Date:** 2026-03-04 (deployment failure occurred 2026-03-05 ~01:40 UTC)
-**Duration:** ~61 minutes (service down ~01:40 UTC to 02:11 UTC on 2026-03-05)
-**Severity:** Complete service outage (API container failed to start)
-**Services affected:** lucos_photos (photos.l42.eu)
-**Detected by:** lucos-site-reliability ops check
+| Field | Value |
+|---|---|
+| **Date** | 2026-03-04 (deployment failure occurred 2026-03-05 ~01:40 UTC) |
+| **Duration** | ~61 minutes (service down ~01:40 UTC to 02:11 UTC on 2026-03-05) |
+| **Severity** | Complete service outage (API container failed to start) |
+| **Services affected** | lucos_photos (photos.l42.eu) |
+| **Detected by** | lucos-site-reliability ops check |
 
 ---
 

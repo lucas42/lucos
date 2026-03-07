@@ -1,10 +1,12 @@
 # Incident: lucos_arachne_web crash-loops on cold start — nginx upstream DNS resolution failure
 
-**Date:** 2026-03-06
-**Duration:** ~7 minutes (12:31 UTC issue raised to 12:38 UTC PR merged). Service was likely unavailable from the time of the host reboot earlier in the day until recovery.
-**Severity:** Complete service outage for lucos_arachne_web
-**Services affected:** lucos_arachne (arachne.l42.eu) — web frontend component
-**Detected by:** lucos-system-administrator during post-reboot health check
+| Field | Value |
+|---|---|
+| **Date** | 2026-03-06 |
+| **Duration** | ~7 minutes (12:31 UTC issue raised to 12:38 UTC PR merged). Service was likely unavailable from the time of the host reboot earlier in the day until recovery. |
+| **Severity** | Complete service outage for lucos_arachne_web |
+| **Services affected** | lucos_arachne (arachne.l42.eu) — web frontend component |
+| **Detected by** | lucos-system-administrator during post-reboot health check |
 
 Source issue: [lucas42/lucos_arachne#60](https://github.com/lucas42/lucos_arachne/issues/60)
 
