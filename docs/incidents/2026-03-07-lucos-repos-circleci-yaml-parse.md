@@ -36,12 +36,6 @@ The bug existed in the code as shipped in PR #75 but was not caught by tests bec
 
 ---
 
-## What Was Tried That Didn't Work
-
-No dead ends were recorded from the issue or PR discussion — the root cause was identified correctly on the first attempt and the fix worked immediately.
-
----
-
 ## Resolution
 
 PR #81 implemented `UnmarshalYAML` on `circleCIConfig`, replacing the direct yaml.v3 decoding of the `Workflows` field with a two-pass decode:
