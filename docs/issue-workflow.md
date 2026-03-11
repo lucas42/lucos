@@ -10,7 +10,7 @@ For label definitions and colours, see [labels.md](labels.md).
 
 ```
 Created  -->  needs-refining  -->  agent-approved  -->  PR merged  -->  Closed
-              (review phase)      (implementation)
+           (triage + consultation)   (implementation)
 ```
 
 ### Refinement phase
@@ -69,28 +69,29 @@ For strategic guidance on which areas of work map to which priority level, see [
 
 ## Specialist follow-up routing
 
-Some issues need specialist review after the primary owner finishes but before `agent-approved`. Two domains:
+Some issues need specialist review after the primary agent's input, but before `agent-approved`. Two domains:
 
 ### SRE follow-up
 
-Issues touching **monitoring, logging, observability, reliability, or incident management** (incident response, reporting, post-mortems, tracking) get re-routed to `owner:lucos-site-reliability` for SRE review after the primary owner's work is complete. Also applies mid-lifecycle if reliability or incident management concerns are raised in comments.
+Issues touching **monitoring, logging, observability, reliability, or incident management** (incident response, reporting, post-mortems, tracking) get SRE input before approval. During triage, the issue manager consults the primary agent first (e.g. architect for design), then consults `lucos-site-reliability` sequentially so the SRE sees the primary agent's comment. Also applies mid-lifecycle if reliability or incident management concerns are raised in comments.
 
 ### Security follow-up
 
-Issues touching **authentication, authorisation, data protection, or secret management** get re-routed to `owner:lucos-security` for security review after the primary owner's work is complete. Also applies mid-lifecycle if security concerns are raised in comments.
+Issues touching **authentication, authorisation, data protection, or secret management** get security input before approval. During triage, the issue manager consults the primary agent first, then consults `lucos-security` sequentially so the security agent sees the primary agent's comment. Also applies mid-lifecycle if security concerns are raised in comments.
 
 ## Label management
 
 **lucos-issue-manager is the sole agent responsible for managing labels.** No other agent adds, removes, or changes labels.
 
-### Review agents
+### Consulted agents
 
-When a review agent (architect, sysadmin, SRE, security, code-reviewer) picks up a `needs-refining` issue:
+When an agent (architect, sysadmin, SRE, security, code-reviewer) is consulted by the issue manager during triage:
 
 1. Read the full issue and comments.
 2. Do the work (design proposal, security assessment, etc.).
-3. Post a summary comment describing what was done and the recommended next step.
-4. **Do not touch labels.**
+3. Post a summary comment on the issue describing what was done and the recommended next step.
+4. Message the issue manager back to confirm they've posted their input.
+5. **Do not touch labels.**
 
 ### Implementation agents
 
@@ -102,16 +103,14 @@ When an implementation agent (developer, architect, sysadmin, SRE, security) pic
 
 ### lucos-issue-manager transitions
 
-On each triage pass:
+Most agent consultation happens inline during triage (via SendMessage). The issue manager consults agents, waits for their response, and transitions labels within a single triage pass.
 
-- **Refinement complete**: remove `needs-refining`, `status:*`, review-phase `owner:*`; add `agent-approved`, implementation `owner:*`, `priority:*`.
-- **Route to next specialist**: update `status:*` and `owner:*`.
-- **Incomplete work**: leave labels as-is or comment asking for clarification.
-- **Blocked dependency resolved**: remove `status:blocked`.
+For issues that were labelled with `owner:` and `needs-refining` in a previous session (before the inline flow), the issue manager detects completed agent work: if an agent's comment is the most recent activity with no subsequent reply, treat it as their completed input and transition accordingly.
 
-### Detecting completed agent work
+Transitions that apply between triage passes:
 
-When an agent's comment is the most recent activity on an issue with no subsequent reply, treat it as a signal the agent has finished. Review the comment and transition accordingly.
+- **Blocked dependency resolved**: remove `status:blocked` to make the issue available for pickup.
+- **A PR with a `Closes #N` keyword has been merged**: the issue is automatically closed; no label action needed.
 
 ### Reactions as approval
 
@@ -151,12 +150,12 @@ The audit tool **only creates issues**. It never closes, reopens, or comments on
 - If an issue is closed but the convention still fails, the next sweep creates a **new** issue (not a reopened one).
 - There is no suppression mechanism. If a convention does not apply to a repo, the convention's check function must encode that logic.
 
-## Triaging vs reviewing vs implementing
+## Triaging vs implementing
 
 Agents respond to distinct prompts depending on their role:
 
-- **"triage your issues"** -- triaging (lucos-issue-manager only): runs `get-issues-for-triage`, which returns unlabelled issues, issues with recent activity, or issues routed back to the issue manager. The issue manager assesses clarity, applies labels, and routes issues to the right owner.
-- **"review your issues"** -- reviewing (all agents including lucos-issue-manager): runs `get-issues-for-persona --review <persona>`, which returns only `needs-refining` issues assigned to that persona. The agent provides design input, specialist review, or discussion. For lucos-issue-manager, this covers workflow/process issues assigned via `owner:lucos-issue-manager` (distinct from its triage role).
+- **"triage your issues"** -- triaging (lucos-issue-manager only): runs `get-issues-for-triage`, which returns unlabelled issues, issues with recent activity, or issues routed back to the issue manager. The issue manager assesses clarity, applies labels, and drives issues toward `agent-approved` or `owner:lucas42`. When an issue needs specialist input (design, security, reliability, etc.), the issue manager messages the relevant agent directly during triage, waits for their response, then re-assesses. This inline consultation replaces the previous separate review phase.
+- **"run your ops checks"** -- ops checks (security, SRE, sysadmin): each agent runs its proactive operational checks (dependabot alerts, monitoring status, container health, etc.) and raises issues for anything found. These run before triage so newly raised issues are included in the triage pass.
 - **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the single highest-priority `agent-approved`, non-blocked issue across all repos. It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
 
 All implementation agents run in the same sandbox, so the dispatcher controls sequencing by picking one issue at a time. This avoids filesystem conflicts and keeps changes small, focused, and easy to debug.
