@@ -57,11 +57,7 @@ When lucos-issue-manager marks an issue `agent-approved`, it also assigns who wi
 
 ### Priority
 
-The **implementation queue** (`docs/implementation-queue.txt` in the `lucos` repo) is the source of truth for pickup order. Issues are listed top-to-bottom; `get-next-implementation-issue` reads the file and returns the first valid (open, `agent-approved`, non-blocked, owner-labelled) issue.
-
-Priority labels determine **initial placement** in the queue: `priority:high` issues go near the top, `priority:low` near the bottom. Within the same priority level, older issues are placed first. Lucas42 can reorder lines in the queue file at any time for fine-grained control.
-
-When lucos-issue-manager approves a new issue, it appends the URL to the appropriate position in the queue file (at the bottom of the relevant priority band). For `priority:critical` issues, insert at the top of the file.
+`get-next-implementation-issue` searches all repositories for `agent-approved`, non-blocked issues and sorts by priority label (`priority:critical` > `priority:high` > `priority:medium` > `priority:low` > unprioritised), then oldest first within each band.
 
 Issues without a priority label have not yet been prioritised -- distinct from `priority:medium`.
 
@@ -160,7 +156,7 @@ Agents respond to distinct prompts depending on their role:
 
 - **"triage your issues"** -- triaging (lucos-issue-manager only): runs `get-issues-for-triage`, which returns unlabelled issues, issues with recent activity, or issues routed back to the issue manager. The issue manager assesses clarity, applies labels, and drives issues toward `agent-approved` or `owner:lucas42`. When an issue needs specialist input (design, security, reliability, etc.), the issue manager messages the relevant agent directly during triage, waits for their response, then re-assesses. This inline consultation replaces the previous separate review phase.
 - **"run your ops checks"** -- ops checks (security, SRE, sysadmin): each agent runs its proactive operational checks (dependabot alerts, monitoring status, container health, etc.) and raises issues for anything found. These run before triage so newly raised issues are included in the triage pass.
-- **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the next `agent-approved`, non-blocked issue from the queue file (`docs/implementation-queue.txt`). It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
+- **"implement issue {url}"** -- implementing: the dispatcher runs `get-next-implementation-issue` to find the highest-priority `agent-approved`, non-blocked issue across all repos. It reads the `owner:*` label to determine which persona to dispatch, then passes the specific issue URL. The agent implements the issue, opens a PR, then stops.
 
 All implementation agents run in the same sandbox, so the dispatcher controls sequencing by picking one issue at a time. This avoids filesystem conflicts and keeps changes small, focused, and easy to debug.
 

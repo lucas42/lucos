@@ -49,13 +49,7 @@ When assigning priority labels during triage:
 
 If an issue in a paused repository has a genuine critical security concern, it may still warrant `priority:high` -- use judgement.
 
-Within a priority level, oldest issues are picked up first. This ordering is used to determine **initial placement** when adding an issue to the implementation queue.
-
-### Implementation queue
-
-Priority labels determine **where in the queue** a newly approved issue is placed, but the **`docs/implementation-queue.txt` file is the source of truth for actual pickup order**. Lucas42 can edit that file to reorder issues within or across priority bands. `get-next-implementation-issue` reads from the queue file rather than sorting dynamically by label.
-
-When the issue manager approves a new issue, it appends the URL to `docs/implementation-queue.txt` at the bottom of the appropriate priority band (or at the end of the file if no band comment exists). For `priority:critical` issues, the URL should be inserted at the top of the file so it is picked up immediately.
+Within a priority level, oldest issues are picked up first.
 
 ### Preventing priority inflation
 
