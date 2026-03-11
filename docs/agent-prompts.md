@@ -2,101 +2,78 @@
 
 How to get each agent to discover and work through its own backlog.
 
-There are three distinct types of work: **triaging** (lucos-issue-manager assessing issues, applying labels, and routing to the right owner), **reviewing** (specialist agents providing design input or assessment on assigned issues), and **implementing** (writing code, opening PRs). Triaging and reviewing each use per-persona scripts; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
+There are two distinct types of work: **triaging** (lucos-issue-manager assessing issues, applying labels, consulting other agents inline, and routing to the right owner) and **implementing** (writing code, opening PRs). Triaging uses a dedicated triage script; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
 
 ---
 
-## All agents, triage and review
+## Routine dispatch (`/routine`)
 
-Dispatches all agents in three sequential phases for triage and review work. The dispatcher must wait for each phase to fully complete before starting the next.
+Dispatches all agents in sequential phases for ops checks, triage, and summary. The dispatcher must wait for each phase to fully complete before starting the next.
 
 ```
-/review
+/routine
 ```
 
-This is a custom Claude Code skill (defined in `~/.claude/skills/review/SKILL.md`). The legacy prompt `all agents, review your issues` also works.
+This is a custom Claude Code skill (defined in `~/.claude/skills/routine/SKILL.md`).
 
-**Phase 1** (parallel): `lucos-issue-manager` (triage) + `lucos-code-reviewer` (review)
+**Phase 1** (parallel): Ops checks + PR review
 
-The issue manager triages first to assign `owner:` labels to unowned issues, so that Phase 2 agents pick up fresh work. The code reviewer is independent of the issue pipeline and runs in parallel with it.
+- `lucos-code-reviewer` -- "review any open PRs"
+- `lucos-security` -- "run your ops checks"
+- `lucos-system-administrator` -- "run your ops checks"
+- `lucos-site-reliability` -- "run your ops checks"
 
-**Phase 2** (parallel, after Phase 1): `lucos-architect` + `lucos-system-administrator` + `lucos-security` + `lucos-site-reliability` + `lucos-issue-manager` (review) + `lucos-developer` (review)
+Ops checks run first so that any issues they raise are available for triage in Phase 2. PR review is independent of the issue pipeline and runs in parallel.
 
-The six agents review their assigned backlogs. Specialist agents post design proposals, comments, or assessments. The issue manager reviews workflow/process issues assigned to it (distinct from its Phase 1/3 triage role). The developer reviews issues where implementation input is needed during the design phase. All may leave issues needing reassignment.
+**Phase 2** (sequential, after Phase 1): Triage with inline agent consultation
 
-**Phase 3** (after Phase 2): `lucos-issue-manager` again (triage)
+- `lucos-issue-manager` -- "triage your issues"
 
-A second triage pass by the issue manager to handle anything Phase 2 agents touched, reassign or transition labels, and tidy up issues left in an intermediate state.
+The issue manager handles the full triage lifecycle in a single pass. When an issue needs input from another agent (e.g. architect, SRE, security), the issue manager messages that agent directly during triage, waits for their response, then re-assesses the issue. This continues until the issue is either `agent-approved` or needs input from lucas42.
+
+**Phase 3** (after Phase 2): Summary for the user
+
+The dispatcher compiles a prioritised list of issues that need the user's attention (any open issue with `owner:lucas42`).
 
 ---
 
-## Triaging and reviewing issues
+## Triaging issues
 
-The issue manager **triages** issues (assessing, labelling, routing). All other agents **review** `needs-refining` issues assigned to them (via `get-issues-for-persona --review`).
+Only the issue manager triages issues. Other agents provide input when consulted by the issue manager during triage.
 
-### lucos-issue-manager (triage + review)
+### lucos-issue-manager (triage)
 
-Responds to two distinct prompts:
-
-**Triage**: Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`) rather than `get-issues-for-persona`.
+Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`). When an issue needs specialist input, the issue manager messages the relevant agent directly via SendMessage, waits for their response, then re-assesses.
 
 ```
 lucos-issue-manager, triage your issues
 ```
 
-**Review**: Reviews `needs-refining` issues labelled `owner:lucos-issue-manager`. These are typically workflow, process documentation, or issue convention issues.
+### Other agents (consulted during triage)
 
-```
-lucos-issue-manager, review your issues
-```
+Agents like `lucos-architect`, `lucos-security`, `lucos-site-reliability`, `lucos-system-administrator`, and `lucos-developer` do not have their own issue review queues. Instead, the issue manager messages them directly during triage when their input is needed on a specific issue. The agent reads the issue, posts a comment with their input, and messages the issue manager back.
 
 ### lucos-code-reviewer
 
-Reviews open PRs and reviews its assigned issues.
+Reviews open PRs. Triggered during Phase 1 of `/routine` or on demand.
 
 ```
-lucos-code-reviewer, review your issues
+lucos-code-reviewer, review any open PRs
 ```
 
-### lucos-architect
+---
 
-Reviews `needs-refining` issues labelled `owner:lucos-architect`.
+## Ops checks
 
-```
-lucos-architect, review your issues
-```
-
-### lucos-system-administrator
-
-Reviews `needs-refining` issues labelled `owner:lucos-system-administrator`.
+Agents with operational responsibilities run proactive checks when prompted:
 
 ```
-lucos-system-administrator, review your issues
+lucos-security, run your ops checks
+lucos-system-administrator, run your ops checks
+lucos-site-reliability, run your ops checks
 ```
 
-### lucos-security
-
-Reviews dependabot alerts, then reviews `needs-refining` issues labelled `owner:lucos-security`.
-
-```
-lucos-security, review your issues
-```
-
-### lucos-site-reliability
-
-Reviews `needs-refining` issues labelled `owner:lucos-site-reliability`.
-
-```
-lucos-site-reliability, review your issues
-```
-
-### lucos-developer
-
-Reviews `needs-refining` issues labelled `owner:lucos-developer`. Rare -- used when implementation input is needed during the design phase.
-
-```
-lucos-developer, review your issues
-```
+These are typically run in Phase 1 of `/routine` so any issues they raise are available for triage.
 
 ---
 
@@ -108,25 +85,27 @@ Implementation is driven by the dispatcher, not individual agents. A single glob
 /next
 ```
 
-This is a custom Claude Code skill (defined in `~/.claude/skills/next/SKILL.md`). The legacy prompt `implement the next issue` also works.
+This is a custom Claude Code skill (defined in `~/.claude/skills/next/SKILL.md`).
 
 The dispatcher will:
 1. Run `get-next-implementation-issue`, which searches across all repos for the single highest-priority `agent-approved`, non-blocked issue with an `owner:*` label.
-2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` → launch `lucos-developer`).
+2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` -> launch `lucos-developer`).
 3. Pass the specific issue URL to the persona (e.g. "implement issue https://github.com/lucas42/lucos_photos/issues/42").
 4. The persona posts a starting comment, implements, and opens a PR.
-5. After the persona finishes, the dispatcher checks for a new PR and enters a **review loop** if one was created.
+5. The implementation teammate then drives its own **review loop** with `lucos-code-reviewer` (see below).
 
 ### Review loop
 
-After the implementation persona opens a PR, the dispatcher manages a back-and-forth between the code reviewer and the implementation persona:
+After opening a PR, the implementation teammate (not the dispatcher) drives a back-and-forth with the code reviewer:
 
-1. Launch `lucos-code-reviewer` to review the PR.
+1. The implementation teammate messages `lucos-code-reviewer` to review the PR.
 2. If the reviewer **approves**, the loop is done.
-3. If the reviewer **requests changes**, send the PR back to the implementation persona with "address the code review feedback on PR {url}". The persona reads the review comments, pushes fixes, and returns.
+3. If the reviewer **requests changes**, the implementation teammate addresses the feedback, pushes fixes, and requests another review.
 4. Go back to step 1.
 
-This loop runs for up to **5 iterations**. If the PR is still not approved after 5 rounds, the dispatcher stops and flags it for lucas42 to review — this likely indicates a mismatch in expectations that needs human judgement.
+This loop runs for up to **5 iterations**. If the PR is still not approved after 5 rounds, the teammate stops and flags it for lucas42 to review.
+
+The full procedure is documented in `~/.claude/pr-review-loop.md`.
 
 ### Why the dispatcher picks the issue
 
@@ -135,5 +114,9 @@ All implementation agents run in the same sandbox. If multiple personas were dis
 ### Notes
 
 - `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
-- `lucos-architect` handles ADR and architectural documentation issues. These are issues whose primary deliverable is writing an ADR or documenting a convention.
-- The "implement" prompt is deliberately separate from "review" to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
+- `lucos-architect` handles ADR and architectural documentation issues.
+- `lucos-system-administrator` handles purely infrastructure issues.
+- `lucos-site-reliability` handles monitoring, logging, pipeline, and incident management issues.
+- `lucos-security` handles purely security issues.
+- `lucos-issue-manager` handles workflow and process documentation issues.
+- The "implement" prompt is deliberately separate from triage to avoid multiple simultaneous changes that are hard to debug and expensive on credits.
