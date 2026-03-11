@@ -79,7 +79,7 @@ These are typically run in Phase 1 of `/routine` so any issues they raise are av
 
 ## Implementing issues
 
-Implementation is driven by the dispatcher, not individual agents. A single global script finds the highest-priority issue across all repos and the dispatcher routes it to the correct persona.
+Implementation is driven by the dispatcher, not individual agents. A single global script reads the **implementation queue** (`docs/implementation-queue.txt` in the `lucos` repo) and returns the first valid issue. The dispatcher routes it to the correct persona.
 
 ```
 /next
@@ -88,7 +88,7 @@ Implementation is driven by the dispatcher, not individual agents. A single glob
 This is a custom Claude Code skill (defined in `~/.claude/skills/next/SKILL.md`).
 
 The dispatcher will:
-1. Run `get-next-implementation-issue`, which searches across all repos for the single highest-priority `agent-approved`, non-blocked issue with an `owner:*` label.
+1. Run `get-next-implementation-issue`, which reads `docs/implementation-queue.txt` from the `lucos` repo and returns the first `agent-approved`, open, non-blocked issue with an `owner:*` label.
 2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` -> launch `lucos-developer`).
 3. Pass the specific issue URL to the persona (e.g. "implement issue https://github.com/lucas42/lucos_photos/issues/42").
 4. The persona posts a starting comment, implements, and opens a PR.
