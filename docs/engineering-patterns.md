@@ -132,6 +132,55 @@ The router generates its Nginx config from `lucos_configy` and routes `{domain}`
 
 DNS is managed by `lucos_dns`, which contains two containers: a BIND name server and a Python sync process that generates zone files from `lucos_configy` data.
 
+### WebSockets
+
+WebSocket connections are supported through `lucos_router` without any per-service configuration. The router's Nginx template includes a convention-based location block that matches two URL patterns:
+
+- **`/stream`** -- exact match
+- **Any path containing `/ws/`** -- regex match
+
+For requests matching either pattern, the router adds the headers required for WebSocket upgrade (`Upgrade: $http_upgrade`, `Connection: "Upgrade"`) and switches to HTTP/1.1. All other proxy headers (host, forwarded-for, etc.) are passed through as normal.
+
+This means a backend service only needs to listen for WebSocket connections on `/stream` (or a path containing `/ws/`), and the router will handle the upgrade transparently. No changes to `lucos_configy`, no bespoke Nginx config.
+
+#### Backend pattern
+
+Services that use WebSockets (currently `lucos_loganne` and `lucos_notes`) follow the same pattern. They use the `ws` npm package (`WebSocketServer`), attach it to the existing HTTP server, and bind to the `/stream` path:
+
+```javascript
+import { WebSocketServer } from 'ws';
+
+export function startup(httpServer, app) {
+    const server = new WebSocketServer({
+        clientTracking: true,
+        server: httpServer,   // share the HTTP server, not a separate port
+        path: '/stream',
+    });
+    server.on('connection', async (client, request) => {
+        // authenticate, then handle messages
+    });
+    app.websocket = {
+        send: event => sendToAllClients(server, event),
+    };
+}
+```
+
+Key points:
+- The WebSocket server shares the same HTTP server and port -- no additional port allocation needed
+- Authentication uses the `auth_token` cookie from the upgrade request (parsed via `request.headers.cookie`)
+- Unauthenticated clients are closed immediately with code `1008` (Policy Violation)
+
+#### Client pattern
+
+Browser clients connect using the page's own host and derive the protocol from the page URL:
+
+```javascript
+const protocol = location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${protocol}://${location.host}/stream`);
+```
+
+Clients implement automatic reconnection on close (typically with a short delay) since WebSocket connections are inherently less stable than HTTP requests.
+
 ### Inter-service communication
 
 Services on the same Docker Compose network communicate via service name as hostname (e.g. `redis://redis:6379`). Services in different compose stacks communicate via their public domain or `localhost:{port}` when on the same host.
