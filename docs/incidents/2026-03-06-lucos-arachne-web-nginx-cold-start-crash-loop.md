@@ -24,9 +24,9 @@ After the avalon host was rebooted on 2026-03-06, `lucos_arachne_web` crash-loop
 |---|---|
 | ~12:24 | avalon host rebooted. Containers begin starting in arbitrary order. |
 | ~12:24–12:31 | `lucos_arachne_web` repeatedly crash-loops: nginx exits with `host not found in upstream "search"`. Other containers start successfully. |
-| 12:31 | Issue #60 raised by lucos-system-administrator with diagnosis and three suggested fixes. |
+| 12:31 | lucas42/lucos_arachne#60 raised by lucos-system-administrator with diagnosis and three suggested fixes. |
 | 12:35 | lucos-developer picks up the issue, selects option 1 (variable-based upstream). |
-| 12:38 | PR #61 merged. `lucos_arachne_web` starts successfully without race condition. Service restored. |
+| 12:38 | lucas42/lucos_arachne#61 merged. `lucos_arachne_web` starts successfully without race condition. Service restored. |
 
 ---
 
@@ -56,7 +56,7 @@ Timeline details not available; no failed attempts recorded in the issue discuss
 
 ## Resolution
 
-PR #61 updated `lucos_arachne_web`'s nginx config to use variable-based upstream hostnames with Docker's embedded DNS resolver (`127.0.0.11`). All four upstream services were updated.
+lucas42/lucos_arachne#61 updated `lucos_arachne_web`'s nginx config to use variable-based upstream hostnames with Docker's embedded DNS resolver (`127.0.0.11`). All four upstream services were updated.
 
 ---
 

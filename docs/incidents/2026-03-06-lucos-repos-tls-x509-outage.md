@@ -23,9 +23,9 @@ The `lucos_repos` container was fully unable to contact the GitHub API, returnin
 | Time (UTC) | Event |
 |---|---|
 | 00:18 | Earliest log entry from 2026-03-06 showing the TLS failure. Service likely down from this point. |
-| 00:59 | Issue #39 raised by lucos-site-reliability with root cause diagnosis. |
+| 00:59 | lucas42/lucos_repos#39 raised by lucos-site-reliability with root cause diagnosis. |
 | 01:36 | lucos-developer responds with diagnosis confirmation and fix plan. |
-| 01:38 | PR #40 merged: `ca-certificates` added to runtime Dockerfile stage. Container rebuilt and deployed. Service restored. |
+| 01:38 | lucas42/lucos_repos#40 merged: `ca-certificates` added to runtime Dockerfile stage. Container rebuilt and deployed. Service restored. |
 
 ---
 
@@ -33,7 +33,7 @@ The `lucos_repos` container was fully unable to contact the GitHub API, returnin
 
 The Dockerfile for `lucos_repos` uses a multi-stage build. The runtime stage was based on `debian:trixie-slim`, which is a minimal image that does not include the `ca-certificates` package. Without this package, the Go binary's TLS client has no trusted CA bundle and cannot verify any TLS certificate, including those used by `api.github.com`.
 
-This was not caught earlier because the service was newly rebuilt from Go (PR #36, deployed 2026-03-05 at 23:10 UTC) and the TLS verification failure manifested on the very next startup — within hours of initial deployment.
+This was not caught earlier because the service was newly rebuilt from Go (lucas42/lucos_repos#36, deployed 2026-03-05 at 23:10 UTC) and the TLS verification failure manifested on the very next startup — within hours of initial deployment.
 
 ---
 
@@ -45,7 +45,7 @@ A container restart was attempted (noted in the issue body) and did not resolve 
 
 ## Resolution
 
-PR #40 added `apt-get install -y ca-certificates` to the runtime stage of the Dockerfile. A rebuild and redeploy via CI fixed the outage without any manual server-side changes.
+lucas42/lucos_repos#40 added `apt-get install -y ca-certificates` to the runtime stage of the Dockerfile. A rebuild and redeploy via CI fixed the outage without any manual server-side changes.
 
 ---
 
