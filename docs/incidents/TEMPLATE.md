@@ -44,6 +44,8 @@ If everything tried during the incident worked on the first attempt, note that h
 
 Describe the fix applied to restore service. Reference the specific PR or commit if applicable.
 
+> **Note on cross-repo references:** All incident reports live in the `lucos` repo. Always use the fully-qualified format `lucas42/repo_name#N` (e.g. `lucas42/lucos_monitoring#54`) for issues and PRs in other repositories — bare `#N` references will be misinterpreted as links to `lucos` issues.
+
 ---
 
 ## Contributing Factors
@@ -60,7 +62,7 @@ Explanation.
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Description of action | #N | Open / In progress / Done |
+| Description of action | [lucas42/repo_name#N](https://github.com/lucas42/repo_name/issues/N) | Open / In progress / Done |
 
 ---
 
