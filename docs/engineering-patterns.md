@@ -228,7 +228,7 @@ All services use CircleCI with the `lucos/deploy` orb. The standard pipeline is:
 2. **Test** (if tests exist) -- runs in parallel with build
 3. **Deploy** (`lucos/deploy-avalon`) -- deploys to production, only on `main`, requires build (and test if present) to pass
 
-ARM services use `lucos/build-arm64` or `lucos/build-armv7l` and deploy to `xwing` or `salvare`.
+Services that need to run on ARM hosts use `lucos/build-multiplatform` (docker buildx + QEMU emulation) instead of `lucos/build-amd64`, producing a multi-architecture image that works on both amd64 and arm64. These services deploy to `xwing` or `salvare`.
 
 The build step only has access to a dummy `PORT` environment variable -- no other env vars are available at build time. This means `docker-compose.yml` must not use variable interpolation for anything other than `PORT` in the `ports:` mapping.
 

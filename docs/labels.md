@@ -78,4 +78,3 @@ These labels exist in the following repositories:
 - lucos_media_weightings
 - lucos_monitoring
 - lucos_photos
-- pici
