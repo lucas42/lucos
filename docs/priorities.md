@@ -2,7 +2,7 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when assigning `priority:*` labels during triage.
 
-**Last updated**: 2026-03-11
+**Last updated**: 2026-03-17
 
 ---
 
@@ -30,9 +30,9 @@ The following repositories have all non-critical work paused. Issues in these re
 
 All work paused except critical security updates. The service is planned to be replaced entirely with something based around passkeys. New feature work would be wasted effort.
 
-### pici
+### pici (archived)
 
-All work paused. Being retired in favour of docker buildx multi-platform builds (see [lucos_deploy_orb#9](https://github.com/lucas42/lucos_deploy_orb/issues/9)).
+Retired. All services migrated to `build-multiplatform` (docker buildx + QEMU). Repo archived. No new issues expected.
 
 ---
 
