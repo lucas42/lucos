@@ -26,9 +26,17 @@ A 2–3 sentence description of what happened, what the impact was, and how it w
 
 ---
 
-## Root Cause
+## Analysis
 
-Explain the technical root cause in enough detail that someone unfamiliar with the code could understand it. Include relevant code, configuration, or architecture context.
+Most incidents don't have a single root cause — they are the result of several conditions coinciding. Focus on the contributing factors that made the incident possible, made it worse, or delayed detection. Each stage or factor gets its own sub-heading.
+
+For a simple incident with a clear single cause, a single "Root Cause" sub-heading is fine. For incidents that cascaded through multiple stages, use a separate sub-heading per stage and describe the contributing factors within each.
+
+> **Note on cross-repo references:** All incident reports live in the `lucos` repo. Always use the fully-qualified format `lucas42/repo_name#N` (e.g. `lucas42/lucos_monitoring#54`) for issues and PRs in other repositories — bare `#N` references will be misinterpreted as links to `lucos` issues.
+
+### [Stage or factor name]
+
+What happened at this stage, and what conditions made it possible or worse.
 
 ---
 
@@ -40,29 +48,11 @@ If everything tried during the incident worked on the first attempt, note that h
 
 ---
 
-## Resolution
-
-Describe the fix applied to restore service. Reference the specific PR or commit if applicable.
-
-> **Note on cross-repo references:** All incident reports live in the `lucos` repo. Always use the fully-qualified format `lucas42/repo_name#N` (e.g. `lucas42/lucos_monitoring#54`) for issues and PRs in other repositories — bare `#N` references will be misinterpreted as links to `lucos` issues.
-
----
-
-## Contributing Factors
-
-Describe any conditions that made the incident worse, delayed detection, or increased blast radius. Each factor should have its own sub-heading.
-
-### Factor 1: [Name]
-
-Explanation.
-
----
-
 ## Follow-up Actions
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Description of action | [lucas42/repo_name#N](https://github.com/lucas42/repo_name/issues/N) | Open / In progress / Done |
+| Description of action | lucas42/repo_name#N | Open / In progress / Done |
 
 ---
 
