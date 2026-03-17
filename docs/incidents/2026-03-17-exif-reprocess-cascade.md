@@ -118,12 +118,11 @@ The more useful question is: which contributing factors, if addressed, would hav
 | Action | Issue / PR | Status |
 |---|---|---|
 | Preserve `person_confirmed=True` links in `detect_and_save_faces` | lucas42/lucos_photos#208 | Merged |
-| Document volume restore procedure (use `docker compose up` first to ensure labels) | To be raised | Open |
-| Document lucos_backups dependency on Docker Compose volume labels | To be raised | Open |
+| Document volume restore procedure and Docker Compose label requirement | lucas42/lucos_backups#64 | Open |
 | Document telemetry API access in a reference file | Captured in SRE agent memory | Done (reference doc to follow) |
 | Investigate 3 missing photos from 2026-03-16 | lucas42/lucos_photos_android#74 | Open |
-| Consider separating telemetry storage from application database | To be raised | Open |
-| Add unit tests for `Volume.__init__` happy path in lucos_backups | To be raised | Open |
+| Consider separating telemetry storage from application database | lucas42/lucos_photos#211 | Open |
+| Add unit tests for `Volume.__init__` with and without labels | lucas42/lucos_backups#65 | Open |
 
 ---
 
