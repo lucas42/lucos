@@ -116,15 +116,19 @@ Transitions that apply between triage passes:
 
 A +1 reaction from lucas42 on a comment counts as approval of that comment's recommendations. If the +1'd comment contains a design proposal, treat the design as approved. If it lays out options with a recommendation, treat the +1 as agreement with the recommended option.
 
-## Ops check duplicate prevention
+## Duplicate prevention
 
-Personas that run ops checks (lucos-security, lucos-site-reliability, lucos-system-administrator) must always search for existing open issues before creating new ones. The rules are:
+**All agents must search for existing open issues before creating new ones.** This applies to every context: ops checks, incident follow-up, code review observations, ad-hoc issue creation, and any other situation where an agent creates an issue.
 
-1. **If an open issue already exists** for the same problem: take no action. Do not create a duplicate.
+The rules are:
+
+1. **If an open issue already exists** for the same problem (on any repo — check cross-repo too): take no action. Do not create a duplicate.
 2. **If an open issue exists but new information has been discovered** (e.g. new symptoms, a higher severity, additional affected files): add a comment to the existing issue with the new information.
-3. **If no open issue exists**: create a new one following the check-specific instructions.
+3. **If no open issue exists**: create a new one following the relevant instructions.
 
-This prevents duplicate tickets from accumulating when multiple ops check runs detect the same underlying problem.
+Search broadly: the same problem may be filed on a different repo than you'd expect (e.g. a deploy validation issue might be on the deploy orb repo, the affected service repo, or the cross-cutting `lucos` repo). Search the org, not just the target repo.
+
+This is especially important during **incident follow-up**, where multiple agents (SRE, architect, sysadmin, issue manager) are independently analysing the same incident and may identify the same follow-up action. Before filing any incident follow-up issue, search for existing issues that cover the same fix.
 
 ## Audit-finding issues
 
