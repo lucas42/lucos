@@ -128,7 +128,7 @@ The rules are:
 
 Search broadly: the same problem may be filed on a different repo than you'd expect (e.g. a deploy validation issue might be on the deploy orb repo, the affected service repo, or the cross-cutting `lucos` repo). Search the org, not just the target repo.
 
-This is especially important during **incident follow-up**, where multiple agents (SRE, architect, sysadmin, issue manager) are independently analysing the same incident and may identify the same follow-up action. Before filing any incident follow-up issue, search for existing issues that cover the same fix.
+This is especially important during **incident follow-up**, where multiple agents (SRE, architect, sysadmin, issue manager) are independently analysing the same incident and may identify the same follow-up action. To prevent this: **the SRE writing the incident report is the designated owner of filing all follow-up issues from an incident.** Other agents must not independently file follow-up issues — if they identify a follow-up action, they should message the SRE or the issue manager instead. See `references/incident-reporting.md` for the full process.
 
 ## Audit-finding issues
 
