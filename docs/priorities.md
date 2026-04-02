@@ -2,21 +2,32 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when assigning `priority:*` labels during triage.
 
-**Last updated**: 2026-03-17
+**Last updated**: 2026-04-02
 
 ---
 
 ## Active priorities (in order)
 
-### 1. lucos_photos and lucos_photos_android
+### 1. lucos_repos and .github (audit & workflow infrastructure)
 
-The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) are the highest priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements the top concern.
+The `lucos_repos` audit tool and the `.github` shared workflows are the top priority. This includes:
+
+- Improvements to how `lucos_repos` manages audit-finding issues (e.g. lucas42/lucos_repos#248 — auto-closing resolved findings)
+- Convention fixes and enhancements in `lucos_repos`
+- Shared reusable workflow improvements in `.github` (e.g. tagged releases, naming conventions, SHA pinning, estate rollout gating)
+- Issues recently raised by the architect on `.github` (lucas42/.github#34–38)
+
+Issues in `lucos_repos` and `.github` should be treated as `priority:high`.
+
+### 2. lucos_photos and lucos_photos_android
+
+The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) remain a high priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements important.
 
 Issues raised off the back of this launch (e.g. bugs discovered in production use, missing features noticed during real usage, performance issues with real data) should be treated as `priority:high`.
 
-### 2. LLM agent workflows
+### 3. LLM agent workflows
 
-Tickets that enable or improve LLM agent workflows are the second priority. This includes tooling, infrastructure, and process improvements that make agents more effective at triaging, reviewing, and implementing work.
+Tickets that enable or improve LLM agent workflows are the third priority. This includes tooling, infrastructure, and process improvements that make agents more effective at triaging, reviewing, and implementing work.
 
 Examples: agent scripts, monitoring endpoints for agents, agent sandbox provisioning, workflow documentation.
 
