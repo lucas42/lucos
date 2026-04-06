@@ -2,34 +2,27 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when assigning `priority:*` labels during triage.
 
-**Last updated**: 2026-04-02
+**Last updated**: 2026-04-06
 
 ---
 
 ## Active priorities (in order)
 
-### 1. lucos_repos and .github (audit & workflow infrastructure)
+### 1. lucos_media_* v3 migration
 
-The `lucos_repos` audit tool and the `.github` shared workflows are the top priority. This includes:
+The migration of `lucos_media_*` services to the v3 API format is the top priority. This includes:
 
-- Improvements to how `lucos_repos` manages audit-finding issues (e.g. lucas42/lucos_repos#248 — auto-closing resolved findings)
-- Convention fixes and enhancements in `lucos_repos`
-- Shared reusable workflow improvements in `.github` (e.g. tagged releases, naming conventions, SHA pinning, estate rollout gating)
-- Issues recently raised by the architect on `.github` (lucas42/.github#34–38)
+- Completing the v3 migration across `lucos_media_metadata_api`, `lucos_media_metadata_manager`, `lucos_media_manager`, `lucos_media_weightings`, and related services
+- Issues tracking dual-format support, consumer migration, and backwards-compatibility removal
+- Bug fixes and reliability issues in the media services that arise during or after migration
 
-Issues in `lucos_repos` and `.github` should be treated as `priority:high`.
+Issues in `lucos_media_*` repositories related to the v3 migration should be treated as `priority:high`.
 
 ### 2. lucos_photos and lucos_photos_android
 
 The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) remain a high priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements important.
 
 Issues raised off the back of this launch (e.g. bugs discovered in production use, missing features noticed during real usage, performance issues with real data) should be treated as `priority:high`.
-
-### 3. LLM agent workflows
-
-Tickets that enable or improve LLM agent workflows are the third priority. This includes tooling, infrastructure, and process improvements that make agents more effective at triaging, reviewing, and implementing work.
-
-Examples: agent scripts, monitoring endpoints for agents, agent sandbox provisioning, workflow documentation.
 
 ---
 
@@ -41,10 +34,6 @@ The following repositories have all non-critical work paused. Issues in these re
 
 All work paused except critical security updates. The service is planned to be replaced entirely with something based around passkeys. New feature work would be wasted effort.
 
-### pici (archived)
-
-Retired. All services migrated to `build-multiplatform` (docker buildx + QEMU). Repo archived. No new issues expected.
-
 ---
 
 ## How to use this file
@@ -54,8 +43,8 @@ Priority labels are assigned to **all issues during triage** -- including `needs
 When assigning priority labels during triage:
 
 - **`priority:critical`**: A production service is completely down and users are affected right now. This is for full service outages only -- not for "very important" features, not for degraded performance, and not for bugs that have workarounds. If you are unsure whether something qualifies, it is not critical. See "Preventing priority inflation" below.
-- **`priority:high`**: Issues that fall under priority 1 (lucos_photos, lucos_photos_android, and associated repos), issues raised from the production launch, issues causing a current alert (see "Active alerts" below), or are urgent regardless of area.
-- **`priority:medium`**: Issues that fall under priority 2 (agent workflows), or are important but not in the top priority area.
+- **`priority:high`**: Issues that fall under priority 1 (lucos_media_* v3 migration) or priority 2 (lucos_photos, lucos_photos_android), issues causing a current alert (see "Active alerts" below), or are urgent regardless of area.
+- **`priority:medium`**: Important issues not in the top priority areas.
 - **`priority:low`**: Everything else, including issues in paused repositories.
 
 If an issue in a paused repository has a genuine critical security concern, it may still warrant `priority:high` -- use judgement.
