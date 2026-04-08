@@ -35,17 +35,17 @@ A batch of PRs (#258–#268) to `lucos_arachne` included an upgrade of the Fusek
 
 ## Analysis
 
-### Stage 1: Fuseki 6.0.0 base image dropped wget
+### Stage 1: PR #266 removed wget when switching to Maven, but the healthcheck was not updated
 
-lucas42/lucos_arachne#268 upgraded the triplestore from Fuseki 5.5.0 to 6.0.0 as part of the PR batch. The previous Fuseki image was pulled directly from Docker Hub (`stain/jena-fuseki` or similar) and included standard Unix utilities. The new build — introduced by lucas42/lucos_arachne#10 — builds Fuseki from source on `openjdk:22-jdk-slim`. The `-slim` variant of OpenJDK Debian images is intentionally minimal and does not include `wget`, `curl`, `nc`, or any HTTP client by default.
+The `triplestore` service builds Fuseki from source on `openjdk:22-jdk-slim` (introduced by lucas42/lucos_arachne#266). In that same PR, the `apt-get install` line changed from `apt-get install -y wget gettext-base` (needed for the previous tarball download step) to `apt-get install -y maven gettext-base` — `wget` was dropped because it was no longer needed for the build process, and `maven` was added to drive the dependency download instead.
 
-The healthcheck in `docker-compose.yml` had always used `wget`:
+However, the healthcheck in `docker-compose.yml` used `wget` and was not updated in the same PR:
 
 ```yaml
 test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3030/$/ping"]
 ```
 
-This assumption was valid for the old image but silently broke when the base changed.
+`wget` had been explicitly present in the Dockerfile until PR #266 removed it. The base image (`openjdk:22-jdk-slim`) does not include `wget` by default, so once the explicit install was gone, the healthcheck silently broke. The triplestore itself started and served requests correctly throughout — the failure was purely in the healthcheck wrapper.
 
 ### Stage 2: service_healthy dependency amplified the blast radius
 
@@ -74,7 +74,7 @@ Initial hypothesis was that PR #268 might have caused a Fuseki crash (reduced JV
 | Action | Issue / PR | Status |
 |---|---|---|
 | Add `curl` to triplestore Dockerfile; update healthcheck from `wget` to `curl --fail` | lucas42/lucos_arachne#278 | Done |
-| Document `openjdk:22-jdk-slim` healthcheck pattern in SRE memory | — | Done |
+| Document pattern: when modifying Dockerfile package list, verify no tools used in healthchecks have been dropped | — | Done (SRE memory updated) |
 
 ---
 
