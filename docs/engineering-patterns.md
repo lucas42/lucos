@@ -2,7 +2,7 @@
 
 A reference for how lucOS systems are actually built and operated. This document describes the conventions, patterns, and standards in use across the ecosystem -- not aspirations, but reality as it stands today.
 
-Last updated: 2026-03-11
+Last updated: 2026-04-09
 
 ---
 
@@ -296,11 +296,13 @@ The calling service receives the key as a simple environment variable named `KEY
 KEY_LUCOS_ARACHNE="abc123..."
 ```
 
-The client sends this as a bearer token (or `key` scheme) in the `Authorization` header when calling the server:
+The client sends this in the `Authorization` header using the standard `Bearer` scheme:
 
 ```
-Authorization: key abc123...
+Authorization: Bearer abc123...
 ```
+
+> **Note:** Older code may use `Authorization: key abc123...` instead. Some services still accept the `key` scheme for backwards compatibility, but new code should always use `Bearer`.
 
 #### The server side: `CLIENT_KEYS`
 
