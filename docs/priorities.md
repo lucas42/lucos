@@ -8,17 +8,7 @@ High-level guidance for prioritising work across lucos repositories. Agents shou
 
 ## Active priorities (in order)
 
-### 1. lucos_media_* v3 migration
-
-The migration of `lucos_media_*` services to the v3 API format is the top priority. This includes:
-
-- Completing the v3 migration across `lucos_media_metadata_api`, `lucos_media_metadata_manager`, `lucos_media_manager`, `lucos_media_weightings`, and related services
-- Issues tracking dual-format support, consumer migration, and backwards-compatibility removal
-- Bug fixes and reliability issues in the media services that arise during or after migration
-
-Issues in `lucos_media_*` repositories related to the v3 migration should be treated as `priority:high`.
-
-### 2. lucos_photos and lucos_photos_android
+### 1. lucos_photos and lucos_photos_android
 
 The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) remain a high priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements important.
 
