@@ -7,7 +7,7 @@ A step-by-step checklist for retiring and archiving a lucos repository. Not ever
 Before starting teardown, understand what you're removing and who might be affected.
 
 - [ ] **Identify repo type.** Is this a deployed service (has a `domain` in configy's `systems.yaml`)? A script or library (`scripts.yaml`)? A component (`components.yaml`)?
-- [ ] **Check for dependents.** Search the estate for references: `docker-compose.yml` files, `package.json` / `go.mod` imports, environment variables pointing to this service's domain, Loganne webhook config, and arachne ingestor `SYSTEMS_TO_GRAPHS`.
+- [ ] **Check for dependents.** Search the estate for references: `docker-compose.yml` files, `package.json` / `go.mod` imports, environment variables pointing to this service's domain, Loganne webhook config, and arachne ingestor `live_systems` (in `ingestor/triplestore.py`).
 - [ ] **Review open issues.** Close all open issues with a comment: "Closing — this repository is being archived." Transfer any issues that are still relevant to a successor repo if one exists.
 - [ ] **Remove from project board.** Remove all items for this repo from the "lucOS Issue Prioritisation" project board.
 
@@ -43,6 +43,14 @@ These systems derive their state from configy. After configy is updated:
 
 - [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove them.
 - [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically.
+
+### 2e. Clean up arachne knowledge graph
+
+*Only if the service is listed in `live_systems` in `lucos_arachne/ingestor/triplestore.py` (currently: lucos_eolas, lucos_contacts, lucos_media_metadata_api).*
+
+- [ ] **Remove from `live_systems`** in `ingestor/triplestore.py`. This dict maps system names to their data export URLs — each entry becomes a named graph in Fuseki.
+- [ ] **Commit, push, and redeploy arachne.** On the next ingest run, the `cleanup_triplestore()` function will automatically drop the orphaned named graph and its triples.
+- [ ] **Verify the graph is gone.** After the next ingest cycle, confirm the retired service's graph no longer appears in the triplestore.
 
 ## Phase 3: Estate-wide cleanup
 
