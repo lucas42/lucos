@@ -57,6 +57,7 @@ These fields are relevant only for services that have a user-facing web UI. API-
 | `ok` | bool | Yes | Whether the check is currently passing. |
 | `techDetail` | string | Yes | A human-readable explanation of what the check verifies. |
 | `debug` | string | No | Diagnostic detail, typically included only when `ok` is `false`. |
+| `failThreshold` | integer | No | Number of consecutive failures required before monitoring alerts. Defaults to 1 (alert immediately). Use this for checks that are known to be flappy — e.g. a Fuseki SPARQL endpoint that occasionally hiccups. |
 
 ### Metric object
 
