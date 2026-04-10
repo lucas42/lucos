@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-04-10 |
-| **Duration** | ~16 minutes (14:27 UTC to ~14:43 UTC) |
+| **Duration** | ~33 minutes (14:27 UTC to ~15:00 UTC) |
 | **Severity** | Complete outage |
 | **Services affected** | eolas.l42.eu (lucos_eolas) |
 | **Detected by** | User report; confirmed via monitoring (9 consecutive `/_info` 502 failures) |
@@ -29,8 +29,8 @@ PR lucas42/lucos_eolas#162 ("Add CI test suite") switched the test database to `
 | 14:39 | `settings.py` diff reviewed; root cause identified |
 | 14:42 | Fix committed (restore `'PASSWORD': os.environ.get('POSTGRES_PASSWORD', '')`) |
 | 14:43 | PR lucas42/lucos_eolas#163 opened |
-| ~14:43 | PR approved and merged; CI auto-deploy begins |
-| ~14:50 | Service restored |
+| 14:45:44 | PR lucas42/lucos_eolas#163 approved and merged; CI auto-deploy begins |
+| ~15:00 | CI deploy succeeds; `eolas.l42.eu/_info` returns 200 — service restored |
 
 ---
 
