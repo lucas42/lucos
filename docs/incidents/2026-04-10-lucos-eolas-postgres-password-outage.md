@@ -59,6 +59,7 @@ Everything worked on the first attempt. Root cause was identified from container
 | Action | Issue / PR | Status |
 |---|---|---|
 | Restore POSTGRES_PASSWORD in DATABASES config | lucas42/lucos_eolas#163 | Done |
+| Close CI/production auth mismatch — CI trust auth masks credential config regressions | lucas42/lucos_eolas#164 | Open |
 
 ---
 
