@@ -71,6 +71,7 @@ Root cause was identified correctly on the first investigation pass. No dead end
 |---|---|---|
 | Revert server-side redirect; expire legacy cookies; strip token client-side | lucas42/lucos_media_metadata_manager#212 | Done |
 | Track the better client-side token strip approach as a follow-up to issue #170 | lucas42/lucos_media_metadata_manager#211 | Done (addressed in #212) |
+| Add auth health signal to `/_info` or monitoring — auth failures were invisible for 25 minutes | lucas42/lucos_media_metadata_manager#215 | Open |
 
 ---
 
