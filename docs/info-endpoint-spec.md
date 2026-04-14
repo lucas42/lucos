@@ -58,6 +58,7 @@ These fields are relevant only for services that have a user-facing web UI. API-
 | `techDetail` | string | Yes | A human-readable explanation of what the check verifies. |
 | `debug` | string | No | Diagnostic detail, typically included only when `ok` is `false`. |
 | `failThreshold` | integer | No | Number of consecutive failures required before monitoring alerts. Defaults to 1 (alert immediately). Use this for checks that are known to be flappy — e.g. a Fuseki SPARQL endpoint that occasionally hiccups. |
+| `dependsOn` | string | No | The ID of an upstream system this check depends on, as listed in [configy](https://configy.l42.eu/systems). When that system is being deployed (suppression active), alerts for this check are also suppressed. When the upstream system's suppression clears, this check enters `pending_verification` until a fresh result is received. Single-hop only — do not chain: if A depends on B and B depends on C, suppressing C does not suppress A's checks on B. |
 
 ### Metric object
 
