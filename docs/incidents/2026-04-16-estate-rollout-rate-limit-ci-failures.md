@@ -70,7 +70,7 @@ Everything tried during this incident worked. The rate limit had already reset b
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Add retry-with-backoff to `calc-version` for rate limit errors | lucas42/lucos_deploy_orb#82 | Open |
+| Replace `semantic-release` with a shell script that uses local git operations and one REST API call, eliminating GraphQL rate limit exposure | lucas42/lucos_deploy_orb#82 | Open |
 | Implement dependabot update grouping to reduce daily PR volume | lucas42/lucos_repos#327 | Open |
 | `lucos_time` eolas cache refresh should retry on failure | lucas42/lucos_time#215 | Open |
 
