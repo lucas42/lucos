@@ -72,6 +72,7 @@ Everything tried during this incident worked. The rate limit had already reset b
 |---|---|---|
 | Add retry-with-backoff to `calc-version` for rate limit errors | lucas42/lucos_deploy_orb#82 | Open |
 | Implement dependabot update grouping to reduce daily PR volume | lucas42/lucos_repos#327 | Open |
+| `lucos_time` eolas cache refresh should retry on failure | lucas42/lucos_time#215 | Open |
 
 ---
 
