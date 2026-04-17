@@ -96,7 +96,8 @@ Everything tried worked on the first attempt:
 | Action | Issue / PR | Status |
 |---|---|---|
 | Replace the `docker tag` + `docker push` pattern in `publish-docker.yml` with `docker buildx imagetools create` (same fix that `publish-docker-multiplatform.yml` already had) | lucas42/lucos_deploy_orb#120 | Merged |
-| Increase gunicorn worker count and timeout, consider async worker class, add memory limit, expose saturation metrics in `/_info` | lucas42/lucos_docker_mirror#19 | Open |
+| Tune the gunicorn proxy (worker count, timeout, async workers, memory limit, saturation metrics) | lucas42/lucos_docker_mirror#19 | Closed (superseded by #22 / ADR-0002) |
+| Replace Flask/gunicorn `web` with nginx proxy + `info` sidecar (ADR-0002 implementation — end-to-end streaming, no worker concurrency cap) | lucas42/lucos_docker_mirror#22 | Open |
 | Make the mirror a best-effort optimisation — probe `docker.l42.eu/v2/` before login and skip the mirror config if it's unreachable, so a mirror outage doesn't hard-fail every estate deploy | lucas42/lucos_deploy_orb#122 | Open |
 | Add a pre-publish test on the orb's own CI that exercises `publish-docker`'s `:latest` tag step end-to-end, to catch the next regression of this class | lucas42/lucos_deploy_orb#124 | Open |
 
