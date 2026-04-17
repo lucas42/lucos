@@ -100,6 +100,7 @@ Everything tried worked on the first attempt:
 | Replace Flask/gunicorn `web` with nginx proxy + `info` sidecar (ADR-0002 implementation — end-to-end streaming, no worker concurrency cap) | lucas42/lucos_docker_mirror#22 | Open |
 | Make the mirror a best-effort optimisation — probe `docker.l42.eu/v2/` before login and skip the mirror config if it's unreachable, so a mirror outage doesn't hard-fail every estate deploy | lucas42/lucos_deploy_orb#122 | Open |
 | Add a pre-publish test on the orb's own CI that exercises `publish-docker`'s `:latest` tag step end-to-end, to catch the next regression of this class | lucas42/lucos_deploy_orb#124 | Open |
+| Set an explicit `mem_limit` on `lucos_docker_mirror_registry` in docker-compose (the distribution container survives the ADR-0002 rework and is uncapped today, while avalon is under swap pressure) | lucas42/lucos_docker_mirror#20 | Open |
 
 ---
 
