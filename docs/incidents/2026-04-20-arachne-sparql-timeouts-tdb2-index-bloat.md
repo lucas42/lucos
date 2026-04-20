@@ -34,8 +34,8 @@ On 2026-04-08 lucas42/lucos_arachne#268 replaced the OWL reasoner with a pre-com
 | 2026-04-20 14:43:21 | `POST /$/compact/arachne?deleteOld=true` triggered. Online compaction task 1 starts, builds `Data-0002-tmp` alongside `Data-0001` |
 | 2026-04-20 14:44:11 | Compaction completes successfully in 50s. `Data-0001` removed; `Data-0002` is **76 MB** (1225× smaller). Triple count preserved (227,489). Host disk reclaimed 98 GB |
 | 2026-04-20 14:44– | Post-compaction `ASK {}` latency 3–6 ms. All monitoring checks green |
-| 2026-04-20 14:48 | lucas42/lucos_arachne#387 opened — follow-up PR raising container memory 1G → 2G and `-Xmx` 768m → 1024m |
 | 2026-04-20 14:44 | lucas42/lucos_arachne#386 opened — open-ended issue on long-term ingestion strategy, routed to the architect |
+| 2026-04-20 14:48 | lucas42/lucos_arachne#387 opened — follow-up PR raising container memory 1G → 2G and `-Xmx` 768m → 1024m |
 | 2026-04-20 ~14:52 | lucas42/lucos_arachne#387 approved by lucos-code-reviewer; auto-merge triggered, CI running |
 | 2026-04-20 ~15:05 | Architect replies on #386: recommended order is **conditional refresh → diff-based ingestion → scheduled compaction as belt-and-braces**; offered to draft ADR-0002 once direction is agreed |
 
