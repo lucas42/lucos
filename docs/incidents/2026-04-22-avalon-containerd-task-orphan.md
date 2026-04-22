@@ -48,7 +48,7 @@ Recovery required a cleaner `sudo systemctl restart containerd && sudo systemctl
 
 ## Analysis
 
-This incident had three contributing factors that compounded in sequence. None of them would have been critical alone.
+This incident had four contributing factors that compounded in sequence. None of them would have been critical alone.
 
 ### Factor 1: Docker Hub rate limit exposure at deploy time
 
@@ -98,7 +98,7 @@ Diagnosis proceeded by direct IP (`178.32.218.44`) and public DNS tracing (`dig 
 | `lucos_locations_otrecorder` MQTT crash-loop | [lucas42/lucos_locations#69](https://github.com/lucas42/lucos_locations/issues/69) | Resolved incidentally by the clean restart (was a symptom of the same orphaned-task state). Keep open for the longer-term `depends_on: condition: service_healthy` improvement the issue also proposed |
 | Enable `live-restore: true` on `avalon`, `xwing`, and `salvare` Docker daemons to prevent future daemon restarts from killing all running containers | [lucas42/lucos#107](https://github.com/lucas42/lucos/issues/107) | Open |
 | Avoid running `docker rm -f` on stuck production containers without a confirmed recovery path; written as SRE standing rule | SRE persona memory (`feedback_no_destructive_without_recovery_path.md`) | Applied |
-| Consider whether DNS authoritative nameservers should be co-hosted with services that depend on them (bootstrap/visibility during incidents) | *to be discussed with architect* | Open question, no issue yet |
+| Consider whether DNS authoritative nameservers should be co-hosted with services that depend on them (bootstrap/visibility during incidents) | [lucas42/lucos#109](https://github.com/lucas42/lucos/issues/109) | Open |
 
 ---
 
