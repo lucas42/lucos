@@ -20,13 +20,13 @@ During this morning's Dependabot auto-merge wave, a new deploy of `lucos_media_m
 
 | Time (UTC) | Event |
 |---|---|
-| 07:07–07:32 | Dependabot auto-merge wave kicks off. 13 repos attempt to deploy. Many CI pipelines fail at `Populate known_hosts` step with `getaddrinfo creds.l42.eu: Temporary failure in name resolution` — CircleCI runner DNS blip. |
+| 07:07–07:32 | Dependabot auto-merge wave kicks off. 13 repos attempt to deploy. `lucos_dns` starts rolling out a new `lucos_dns_bind` container at 07:31:35 that will not transition to `Running` for ~20 min, leaving authoritative DNS for `*.l42.eu`/`*.s.l42.eu` unavailable. Other CI pipelines hitting `Populate known_hosts` or `Deploy using docker compose` inside the 07:31–07:51 window fail with `getaddrinfo: Temporary failure in name resolution`. Fuller timeline in the Analysis → "`lucos_dns_bind` unavailable…" section. |
 | ~08:03 | `lucos_media_metadata_api:1.0.14` container created on avalon. Go binary panics with `panic: unable to open database file: no such file or directory`. Exit code 2, zero log lines emitted before panic. |
 | 08:03–08:33 | `media-api.l42.eu` returns HTTP 502 (nginx upstream unreachable). `media-metadata.l42.eu` 502 via the API dependency. `schedule-tracker.l42.eu` records `Ingest of lucos_media_metadata_api failed: 502 Server Error: Bad Gateway`. |
 | 08:33 | SRE investigation begins — SSH to avalon, inspect container mount config. Confirms the volume mount spec is correct; the SQLite file (`/var/lib/docker/volumes/lucos_media_metadata_api_db/_data/media.sqlite`, 149 MB) is present and owned by 1001:1001 as expected. |
 | 08:34 | `docker start 82064191ec29_lucos_media_metadata_api` succeeds. Same image, same mounts. Container logs `INFO Listening for incoming connections port=3002` and serves `/_info` normally. Service restored. |
 | ~08:41 | Something (possibly a CI-retry-triggered `docker compose up`) recreates the container. It starts, logs `Listening`, but within minutes the HTTP server stops responding — `/_info` timeouts. |
-| 08:42 | `lucos_monitoring` (freshly redeployed to v1.0.17 at 08:40) fires estate-wide alerts as it rebuilds state from scratch. False positives on TLS + fetch-info for ~20 services. Recoveries fire from 08:43. |
+| 08:42 | Estate-wide burst of `fetch-info` / `tls-certificate` alerts fires on ~25 services ~2 min after `lucos_monitoring` redeployed (v1.0.17, 08:40:17). These are **real brief check failures** — seven services rolled out within a 90-second window (nginx reloading, avalon I/O contention) — not a monitoring startup artefact (`lucos_monitoring#87`'s warm-up grace period is already working). Matching recoveries fire from 08:43. |
 | 08:45–08:49 | Healthchecks on media-api repeatedly time out. `docker restart` restores service again. |
 | ~08:49 | Media-api stable. Issue [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) filed for the post-startup deadlock pattern. |
 
@@ -61,15 +61,37 @@ No panic, no stack trace, no error log — the HTTP handler is simply blocked. C
 2. **SQLite writer-lock contention.** The 149 MB DB has an uncheckpointed 13 MB WAL; long writer locks serialise readers. The `/_info` handler runs four aggregate queries — any one of them blocking on a writer would stall the healthcheck.
 3. **Goroutine leak** exhausting a shared mutex.
 
-### Stage: CircleCI runner DNS transient (unrelated, but coincident)
+### Stage: `lucos_dns_bind` unavailable for ~20 min during its own deploy
 
-Separately, a cluster of CI failures at 07:07–07:32 resolved to a single symptom: the `Populate known_hosts` step failing with `getaddrinfo creds.l42.eu: Temporary failure in name resolution`. This is a CircleCI runner DNS resolver issue — DNS for `creds.l42.eu` resolves correctly from outside (1.1.1.1, 8.8.8.8, and the author's machine all return the correct A record), and our authoritative `lucos_dns_bind` had no restart in that window. The 6 auto-retries (`max_auto_reruns: 5, auto_rerun_delay: 30s`) all hit the same DNS failure because it persisted beyond the 2.5 min retry envelope.
+**Correction to an earlier version of this report:** the CI DNS failures were first filed here as a "CircleCI / GitHub Actions runner DNS blip". That dismissal was wrong.
 
-This was not directly related to the media-api outage, but contributed to the overall CI red appearance this morning and delayed other deploys. Likely CircleCI-side only; no action on our side.
+Actual sequence:
 
-### Stage: monitoring restart caused self-inflicted alert burst
+| Time (UTC) | Event |
+|---|---|
+| 07:07:54 | `lucos_dns` pipeline #199 starts its first `build-deploy` workflow attempt. |
+| 07:10:27 | `lucos/deploy-avalon` begins `Pull container(s) onto remote box` on avalon. |
+| 07:31:23 | Pull finishes (21 min — slow, because the docker mirror was under simultaneous load from the Dependabot wave). |
+| 07:31:26 | `Deploy using docker compose` starts. Old `lucos_dns_bind` is stopped. New container is **Created** at 07:31:35. |
+| 07:31:35 → 07:51:28 | New `lucos_dns_bind` container is in `Created` but not `Running` state. The bind process inside the container does not actually start for **20 minutes**. Root cause TBD (see follow-up below). Authoritative DNS for `*.l42.eu` and `*.s.l42.eu` is **unavailable** during this window — any cache miss from an external resolver returns SERVFAIL. |
+| 07:51:28 | Bind process starts, initialises in ~30 s. |
+| 07:51:58 | `Deploy using docker compose` completes. |
+| 07:54:17 → 07:56:50 | `Send deploy log to loganne` fails 6 consecutive times (likely negative DNS caching of the earlier failures still lingering, or loganne itself briefly reachable only via stale cache). The `deploySystem` event for `lucos_dns v1.0.11` is never emitted — which is why the Loganne feed had no record of the deploy when this report was first investigated. |
+| 08:38:03 | Re-run of the `build-deploy` workflow succeeds; `deploySystem` event fires at 08:39:57. |
 
-`lucos_monitoring` deployed a new version (v1.0.17) at 08:40. On startup, its in-memory state of "was this system healthy last time?" resets, so the first poll of each service generates a `monitoringAlert` event — even when the service is in fact healthy. This fired ~25 simultaneous alerts at 08:42, of which almost all emitted a matching `monitoringRecovery` at 08:43. Not harmful, but noisy in Loganne and confusing during triage. Worth a separate look at whether monitoring should persist or defer alerting during its own startup.
+Other CI pipelines that ran deploys during the 07:31–07:51 window (lucos_eolas `Populate known_hosts` failed 07:36:33, lucos_notes `Deploy using docker compose` failed 07:38:37, lucos_scenes `Deploy using docker compose` failed 07:37:25) hit the same authoritative-DNS-unavailable condition, manifesting as `getaddrinfo: Temporary failure in name resolution` errors against various `*.l42.eu` hostnames.
+
+**The short 60 s TTL on zone records makes this worse than it needs to be** — any CI runner whose cache expired during the 20 min window would fail, and the existing 5× retry envelope (`max_auto_reruns: 5, auto_rerun_delay: 30s` on `Populate known_hosts`) maxes out at ~2.5 min. This is already tracked as [`lucas42/lucos_dns#28`](https://github.com/lucas42/lucos_dns/issues/28) — add `$TTL 300` to zone templates. Today's 20 min outage is a strong argument for raising its priority.
+
+The 20 min bind-startup delay itself is a separate, new issue and needs investigating — a normal bind restart completes in ~30 s. A new issue will be raised for that.
+
+### Stage: estate-wide alert burst at 08:42 — correctly real, not a monitoring artefact
+
+**Correction to an earlier version of this report:** the 08:42 alert burst was first described here as a self-inflicted consequence of `lucos_monitoring` restarting with empty state. That framing was wrong — `lucos_monitoring#87` already added a warm-up grace period (skip `state_change` when a host is seen for the first time, i.e. not yet in `SystemMap`), and the commit for that fix shipped on 2026-03-20. That fix is working: the alerts at 08:42:21–30 fired ~2 min after monitoring's deploy, well past the first poll cycle.
+
+The alerts were therefore **real brief check failures**, not false positives. Seven services (scenes, configy, blog, notes, weightings, dns, monitoring) rolled out within a ~90-second window at 08:38:48–08:40:17 immediately before the burst. The most likely cause is the nginx router reloading mid-wave (front-side 502s for a few polling rounds) combined with avalon I/O load from the concurrent compose operations. No individual service was genuinely down — they recovered on the next poll — but the fetch-info checks did transiently fail, and monitoring was correct to alert.
+
+No action needed on monitoring; the burst is a symptom of cramming seven deploys into 90 s on a single host, not a monitoring bug.
 
 ---
 
@@ -86,7 +108,8 @@ This was not directly related to the media-api outage, but contributed to the ov
 | Action | Issue / PR | Status |
 |---|---|---|
 | Investigate and fix media-api post-startup HTTP deadlock | [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) | Open |
-| Consider whether `lucos_monitoring` should defer alerting during its own startup to avoid false-positive alert bursts | [`lucas42/lucos_monitoring#186`](https://github.com/lucas42/lucos_monitoring/issues/186) | Open |
+| Add `$TTL 300` to zone templates so resolver caches cover deploy windows | [`lucas42/lucos_dns#28`](https://github.com/lucas42/lucos_dns/issues/28) | Open (pre-existing; today's incident is a strong argument for raising its priority) |
+| Investigate why `lucos_dns_bind` took ~20 min to transition from `Created` to `Running` during today's deploy — normal restart is ~30 s | [`lucas42/lucos_dns#76`](https://github.com/lucas42/lucos_dns/issues/76) | Open |
 
 ---
 
