@@ -86,7 +86,7 @@ This was not directly related to the media-api outage, but contributed to the ov
 | Action | Issue / PR | Status |
 |---|---|---|
 | Investigate and fix media-api post-startup HTTP deadlock | [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) | Open |
-| Consider whether `lucos_monitoring` should defer alerting during its own startup to avoid false-positive alert bursts | To be raised | Open |
+| Consider whether `lucos_monitoring` should defer alerting during its own startup to avoid false-positive alert bursts | [`lucas42/lucos_monitoring#186`](https://github.com/lucas42/lucos_monitoring/issues/186) | Open |
 
 ---
 
