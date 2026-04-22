@@ -20,13 +20,13 @@ During this morning's Dependabot auto-merge wave, a new deploy of `lucos_media_m
 
 | Time (UTC) | Event |
 |---|---|
-| 07:07–07:32 | Dependabot auto-merge wave kicks off. 13 repos attempt to deploy. Many CI pipelines fail at `Populate known_hosts` step with `getaddrinfo creds.l42.eu: Temporary failure in name resolution` — CircleCI runner DNS blip. |
+| 07:07–07:32 | Dependabot auto-merge wave kicks off. 13 repos attempt to deploy. `lucos_dns` starts rolling out a new `lucos_dns_bind` container at 07:31:35 that will not transition to `Running` for ~20 min, leaving authoritative DNS for `*.l42.eu`/`*.s.l42.eu` unavailable. Other CI pipelines hitting `Populate known_hosts` or `Deploy using docker compose` inside the 07:31–07:51 window fail with `getaddrinfo: Temporary failure in name resolution`. Fuller timeline in the Analysis → "`lucos_dns_bind` unavailable…" section. |
 | ~08:03 | `lucos_media_metadata_api:1.0.14` container created on avalon. Go binary panics with `panic: unable to open database file: no such file or directory`. Exit code 2, zero log lines emitted before panic. |
 | 08:03–08:33 | `media-api.l42.eu` returns HTTP 502 (nginx upstream unreachable). `media-metadata.l42.eu` 502 via the API dependency. `schedule-tracker.l42.eu` records `Ingest of lucos_media_metadata_api failed: 502 Server Error: Bad Gateway`. |
 | 08:33 | SRE investigation begins — SSH to avalon, inspect container mount config. Confirms the volume mount spec is correct; the SQLite file (`/var/lib/docker/volumes/lucos_media_metadata_api_db/_data/media.sqlite`, 149 MB) is present and owned by 1001:1001 as expected. |
 | 08:34 | `docker start 82064191ec29_lucos_media_metadata_api` succeeds. Same image, same mounts. Container logs `INFO Listening for incoming connections port=3002` and serves `/_info` normally. Service restored. |
 | ~08:41 | Something (possibly a CI-retry-triggered `docker compose up`) recreates the container. It starts, logs `Listening`, but within minutes the HTTP server stops responding — `/_info` timeouts. |
-| 08:42 | `lucos_monitoring` (freshly redeployed to v1.0.17 at 08:40) fires estate-wide alerts as it rebuilds state from scratch. False positives on TLS + fetch-info for ~20 services. Recoveries fire from 08:43. |
+| 08:42 | Estate-wide burst of `fetch-info` / `tls-certificate` alerts fires on ~25 services ~2 min after `lucos_monitoring` redeployed (v1.0.17, 08:40:17). These are **real brief check failures** — seven services rolled out within a 90-second window (nginx reloading, avalon I/O contention) — not a monitoring startup artefact (`lucos_monitoring#87`'s warm-up grace period is already working). Matching recoveries fire from 08:43. |
 | 08:45–08:49 | Healthchecks on media-api repeatedly time out. `docker restart` restores service again. |
 | ~08:49 | Media-api stable. Issue [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) filed for the post-startup deadlock pattern. |
 
