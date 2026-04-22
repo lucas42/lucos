@@ -55,11 +55,18 @@ Separately, the new 1.0.14 container — once running — would serve requests f
 - New requests hang until the client times out; Docker healthcheck logs `Health check exceeded timeout (5s)` repeatedly.
 - `docker restart` clears the state; the container comes back responsive in ~200 ms.
 
-No panic, no stack trace, no error log — the HTTP handler is simply blocked. Candidate causes (tracked in [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184)):
+No panic, no stack trace, no error log — the HTTP handler was simply blocked.
 
-1. **Synchronous eolas calls in request handlers.** PR #73 added an eolas-fetching data migration for `mentions`/`about`/`language` tags. Eolas itself was under deploy pressure this morning (CircleCI red, its own fetch-info flapping), so slow or hanging outbound HTTP calls are plausible.
-2. **SQLite writer-lock contention.** The 149 MB DB has an uncheckpointed 13 MB WAL; long writer locks serialise readers. The `/_info` handler runs four aggregate queries — any one of them blocking on a writer would stall the healthcheck.
-3. **Goroutine leak** exhausting a shared mutex.
+**Confirmed root cause (via [`lucas42/lucos_media_metadata_api#185`](https://github.com/lucas42/lucos_media_metadata_api/pull/185), merged 2026-04-22 11:14 UTC):** Loganne events are fired synchronously inside every write request handler (`post`, `collectionPost`, `albumPost`, `albumMergedPost`). All four methods used `http.DefaultClient`, which has **no timeout**. When Loganne was slow or unreachable during the morning's deploy wave, every goroutine handling a write request blocked indefinitely waiting for Loganne to respond — eventually exhausting the server's capacity to service new requests, including `/_info`. The process stays alive (nothing panicked) but the handler pool is entirely tied up on stuck outbound HTTP calls.
+
+The fix in PR #185:
+
+- **Loganne client timeout (5s)** — new package-level `loganneHTTPClient` replaces `http.DefaultClient` in all four Loganne methods. Slow Loganne → 5s ceiling, warning log, request continues normally.
+- **Eolas migration timeout (30s)** — `fetchEolasNames` previously created `http.Client{}` with no timeout; now bounded at 30s so a slow eolas can't hang startup indefinitely.
+- **Explicit `http.Server` timeouts** — `ReadHeaderTimeout=10s`, `WriteTimeout=60s`, `IdleTimeout=120s` as a backstop against any other future stuck handler.
+- **pprof + SIGUSR1 goroutine dump** — `net/http/pprof` on a separate listener bound to `127.0.0.1:6060` (localhost-only so the debug endpoints are not exposed publicly), plus a `SIGUSR1` handler that logs all goroutine stacks. Next time something stalls, a stack dump is one `docker exec curl` or `docker kill -SIGUSR1` away — no restart required to capture diagnostics.
+
+The candidate causes listed in earlier versions of this report (SQLite writer-lock contention, generic goroutine leak) were not the root cause. The stalled-outbound-HTTP-call pattern matches the `TCP_FIN_WAIT2` and idle-but-unresponsive symptoms precisely.
 
 ### Stage: `lucos_dns_bind` unavailable for ~20 min during its own deploy
 
@@ -107,8 +114,8 @@ No action needed on monitoring; the burst is a symptom of cramming seven deploys
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Investigate and fix media-api post-startup HTTP deadlock | [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) | Open |
-| Add `$TTL 300` to zone templates so resolver caches cover deploy windows | [`lucas42/lucos_dns#28`](https://github.com/lucas42/lucos_dns/issues/28) | Open (pre-existing; today's incident is a strong argument for raising its priority) |
+| Fix media-api post-startup HTTP deadlock (Loganne client timeout + explicit server timeouts + pprof) | [`lucas42/lucos_media_metadata_api#184`](https://github.com/lucas42/lucos_media_metadata_api/issues/184) / [`PR #185`](https://github.com/lucas42/lucos_media_metadata_api/pull/185) | Done (merged 2026-04-22 11:14 UTC) |
+| Add `$TTL 300` to zone templates so resolver caches cover deploy windows | [`lucas42/lucos_dns#28`](https://github.com/lucas42/lucos_dns/issues/28) / [`PR #77`](https://github.com/lucas42/lucos_dns/pull/77) | Done (merged 2026-04-22 11:18 UTC) |
 | Investigate why `lucos_dns_bind` took ~20 min to transition from `Created` to `Running` during today's deploy — normal restart is ~30 s | [`lucas42/lucos_dns#76`](https://github.com/lucas42/lucos_dns/issues/76) | Open |
 
 ---
