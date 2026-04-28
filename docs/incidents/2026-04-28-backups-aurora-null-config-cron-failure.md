@@ -1,27 +1,28 @@
-# Incident: Backup cron silently failed after Aurora NAS rollout — three bugs across 24 hours from one ADR
+# Incident: Backup cron silently failed after Aurora NAS rollout — four bugs across 24+ hours from one ADR
 
 | Field | Value |
 |---|---|
 | **Date** | 2026-04-27 → 2026-04-28 |
-| **Duration** | ~9 hours of missing backups (2026-04-28 03:25 UTC first scheduled run failed → 2026-04-28 ~12:30 UTC second ad-hoc rerun completes successfully — TBD pending rerun result). Bug-in-production window ~12.5 hours (v1.0.32 deploy at 2026-04-27 23:59 UTC → v1.0.35 deploy at 2026-04-28 12:00 UTC). |
-| **Severity** | Data risk — two consecutive backup cron failures across 24 hours; no `lucos_backups` Loganne event since 2026-04-27 03:58 UTC; schedule-tracker `lucos_backups_errors` reached 2 |
+| **Duration** | ~HH hours of missing backups (2026-04-28 03:25 UTC first scheduled run failed → 2026-04-28 HH:MM UTC third ad-hoc rerun completes successfully — TBD pending third rerun result). Bug-in-production window ~13.5 hours (v1.0.32 deploy at 2026-04-27 23:59 UTC → v1.0.36 deploy at 2026-04-28 13:27:35Z). |
+| **Severity** | Data risk — three consecutive backup cron failures across 24+ hours; no `lucos_backups` Loganne `backups` event since 2026-04-27 03:58 UTC; schedule-tracker `lucos_backups_errors` reached 3 (past its 2-error tolerance, raising a hard alert) |
 | **Services affected** | `lucos_backups` (cron, `/refresh-tracking`, `/_info` checks `host-tracking-failures` and `volume-host`) |
-| **Detected by** | SRE ops check (Bug A); monitoring alert firing on the failed ad-hoc rerun (Bugs B + C) |
-| **Source issues** | [lucas42/lucos_backups#221](https://github.com/lucas42/lucos_backups/issues/221) (Bug A — null-config crash) and [lucas42/lucos_backups#226](https://github.com/lucas42/lucos_backups/issues/226) (Bugs B + C — `Repository.backup` hardcoded `/srv/`, recursive ProxyJump) |
+| **Detected by** | SRE ops check (Bug A); monitoring alerts firing on each subsequent failed ad-hoc rerun (Bugs B + C; Bug D) |
+| **Source issues** | [lucas42/lucos_backups#221](https://github.com/lucas42/lucos_backups/issues/221) (Bug A — null-config crash), [lucas42/lucos_backups#226](https://github.com/lucas42/lucos_backups/issues/226) (Bugs B + C — `Repository.backup` hardcoded `/srv/`, recursive ProxyJump), and [lucas42/lucos_backups#229](https://github.com/lucas42/lucos_backups/issues/229) (Bug D — aurora's `wget` cannot negotiate modern TLS to GitHub) |
 
 ---
 
 ## Summary
 
-The Aurora NAS integration ([`lucas42/lucos_backups#218`](https://github.com/lucas42/lucos_backups/issues/218) → [`lucas42/lucos_backups#219`](https://github.com/lucas42/lucos_backups/pull/219), deployed as v1.0.32 at 2026-04-27 23:59 UTC) shipped three independent bugs that surfaced in sequence over the following 24 hours, each unblocked by the previous fix:
+The Aurora NAS integration ([`lucas42/lucos_backups#218`](https://github.com/lucas42/lucos_backups/issues/218) → [`lucas42/lucos_backups#219`](https://github.com/lucas42/lucos_backups/pull/219), deployed as v1.0.32 at 2026-04-27 23:59 UTC) shipped four independent bugs that surfaced in sequence over the following 24+ hours, each unblocked by the previous fix:
 
 - **Bug A — Null-config crash** (P1). New `Host` configuration fields (`backup_root`, `shell_flavour`) populated only on the new aurora host. For every other host `lucos_configy` returned `null` for these fields, but the new code used `dict.get(key, default)` which only falls back when the key is *absent* — `None` is treated as a real value. Result: every non-aurora host got `backup_root=None`, the `df -P None …` shell command failed, the overnight `create-backups` cron crashed before emitting a Loganne event, and the hourly `/refresh-tracking` was failing every run. Fixed in [`lucas42/lucos_backups#222`](https://github.com/lucas42/lucos_backups/pull/222) by switching to `get(key) or default`.
 - **Bug B — `Repository.backup` ignores per-host `backup_root`** (P1). The same scope of changes that threaded `backup_root` through `Volume.backupToAll` left a module-level `ROOT_DIR = '/srv/backups/'` constant in `repository.py` untouched. After Bug A was fixed and the cron got far enough to reach the repo loop, every repo backup attempted `mkdir -p /srv/backups/external/github/repository` on aurora, where the `lucos-backups` user has no permission to create `/srv/`. ~80 repos failed identically.
 - **Bug C — `_outbound_ssh_args` recursive ProxyJump** (P1). `Host._outbound_ssh_args` added `ProxyJump=<gateway>` to the SSH command whenever the target had an `ssh_gateway` configured, without checking whether the source host running the SSH command was already that gateway. When xwing tried to copy a volume to aurora, xwing was told to ProxyJump *through xwing* to reach aurora — a recursive connection that fails with SSH error 255. All 3 xwing-source volume → aurora copies failed.
+- **Bug D — aurora cannot reach GitHub via TLS** (P1). aurora is a Synology NAS; its bundled `wget`/`openssl` cannot negotiate the TLS versions GitHub requires (`OpenSSL: error:1409442E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version`). After Bugs B and C were fixed and the cron got far enough to actually run `wget` on aurora, every repo backup failed on aurora's first call. Aurora is alphabetically first in `Host.getAll()`, so the failing call exited the `for host in Host.getAll()` loop in `Repository.backup` *before* avalon/salvare/xwing got their copies. Result: 89 repo failures, repos backed up to **zero** hosts on the estate. Fixed in [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) by skipping `is_storage_only` hosts in `Repository.backup` (a deliberate-conflation hot-fix — see "Bug D analysis" below and [`#228`](https://github.com/lucas42/lucos_backups/issues/228) for the proper separation).
 
-Bugs B and C were both fixed in [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) (merged 2026-04-28 11:58 UTC, deployed as v1.0.35 at 12:00 UTC). The second ad-hoc rerun verified all three failure modes resolved — TBD pending rerun result.
+Bugs B and C were fixed in [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) (merged 2026-04-28 11:58 UTC, deployed as v1.0.35 at 12:00 UTC). Bug D was fixed in [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) (merged 2026-04-28 13:25 UTC, deployed as v1.0.36 at 13:27:35Z). The third ad-hoc rerun verified all four failure modes resolved — TBD pending third rerun result.
 
-All three bugs trace to a single ADR rollout (ADR-0001, aurora NAS integration) with insufficient cross-host test coverage. The dev/prod parity gap (Bug A) and the multi-host parameterisation gap (Bugs B + C) are recurring classes of issue with this codebase that warrant follow-up work tracked separately.
+All four bugs trace to a single ADR rollout (ADR-0001, aurora NAS integration) with insufficient cross-host test coverage. The dev/prod parity gap (Bug A), the multi-host parameterisation gap (Bugs B + C), and the cross-host capability-conflation gap (Bug D) are recurring classes of issue with this codebase that warrant follow-up work tracked separately.
 
 ---
 
@@ -45,8 +46,16 @@ All three bugs trace to a single ADR rollout (ADR-0001, aurora NAS integration) 
 | 2026-04-28 11:52 | [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) opened with the bundled fix and 5 new regression tests |
 | 2026-04-28 11:58 | [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) approved (reviewer + lucas42) and merged |
 | 2026-04-28 12:00 | `lucos_backups` v1.0.35 deployed |
-| 2026-04-28 12:01 | Second ad-hoc `create-backups` triggered |
-| 2026-04-28 HH:MM | Second ad-hoc run completes — TBD pending rerun result (will be filled in on completion) |
+| 2026-04-28 12:01 | Second ad-hoc `create-backups` triggered (note: this run was long — ~6.5 GB photos volume took a while — and was still running while the Bug D fix was being prepared in parallel below) |
+| 2026-04-28 ~13:00 | While the second rerun is still in progress, SRE peeks at the log and observes ~50 repo wget failures all citing `OpenSSL: error:1409442E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version` — **Bug D surfaces**, distinct from the volume-side failures (zero `Failed to copy` lines, Bugs B + C confirmed resolved) |
+| 2026-04-28 13:07 | [`lucas42/lucos_backups#228`](https://github.com/lucas42/lucos_backups/issues/228) filed (P3, follow-up tracking the proper separation of `is_storage_only` from "can-reach-external-services") |
+| 2026-04-28 13:08 | [`lucas42/lucos_backups#229`](https://github.com/lucas42/lucos_backups/issues/229) opened (P1) covering Bug D root cause and proposed hot-fix |
+| 2026-04-28 13:10 | [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) opened with the Bug D hot-fix (skip `is_storage_only` hosts in `Repository.backup`) and 2 new regression tests; conflation called out in the code comment, PR body, and both linked issues |
+| 2026-04-28 13:25 | [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) approved by reviewer + lucas42 and auto-merged |
+| 2026-04-28 13:27:35Z | `lucos_backups` v1.0.36 deployed (verified via `docker inspect lucos_backups` `.Created` timestamp) |
+| 2026-04-28 ~13:27 | Third ad-hoc `create-backups` triggered immediately after deploy verified |
+| 2026-04-28 13:46 | The (still-running) second ad-hoc rerun formally completes with **89 repo failures, 0 volume failures** — confirms the diagnosis (Bugs B + C resolved end-to-end, Bug D as predicted) |
+| 2026-04-28 HH:MM | Third ad-hoc run completes — TBD pending third rerun result (will be filled in on completion) |
 
 ---
 
@@ -122,14 +131,55 @@ def _outbound_ssh_args(self, target_host):
 
 The fix in [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) skips the ProxyJump option when `self.domain == target_host.ssh_gateway_domain` — xwing connects directly to aurora.local, which it can since it is the gateway by definition.
 
-### Why Bugs B and C slipped through CI
+### Bug D: aurora cannot reach GitHub via TLS
 
-Both were missed by gaps in test coverage that the existing tests deliberately did not exercise:
+After Bugs B and C were fixed in v1.0.35 and the second ad-hoc rerun at 12:01 UTC reached the repo loop, every `wget` invocation on aurora failed with:
+
+```
+Resolving codeload.github.com... 20.26.156.216
+Connecting to codeload.github.com|20.26.156.216|:443... connected.
+OpenSSL: error:1409442E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version
+Unable to establish SSL connection.
+Exit code: 4
+```
+
+aurora is a Synology NAS. Its bundled `wget`/`openssl` cannot negotiate the TLS versions GitHub requires (TLS 1.2+). GitHub long ago dropped TLS 1.0/1.1, so aurora's old client cannot complete the handshake.
+
+#### Knock-on impact: repos backed up to *zero* hosts, not just to aurora
+
+Unlike `Volume.backupToAll` — which catches per-host failures and continues the inner loop — `Repository.backup`'s for-loop has no exception handling between hosts:
+
+```python
+for host in Host.getAll():
+    directory = "{backup_root}external/github/repository".format(backup_root=host.backup_root)
+    archivePath = "{directory}/{repo_name}.{date}.tar.gz".format(...)
+    host.connection.run("mkdir -p {directory}".format(directory=directory), ...)
+    host.connection.run("wget \"{url}\" -O \"{archivePath}\"".format(...), ...)
+    host.closeConnection()
+```
+
+Aurora is alphabetically first in `Host.getAll()` (`aurora.local` < `avalon.s.l42.eu`). When `wget` raised on aurora, the exception propagated out of `Repository.backup`. The outer loop in `create-backups.py` caught it as a per-repo failure and moved to the next repo — but the inner `for host` loop never reached avalon/salvare/xwing. Every one of the ~80 repos ended up backed up to **zero** hosts, a strict regression from yesterday's "aurora-only failure" (where the other hosts had at least kept getting their copies before Bug B's `mkdir` blocked aurora).
+
+#### The fix and the deliberate conflation
+
+The fix in [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) skips `is_storage_only` hosts in `Repository.backup`, mirroring how `Host.getVolumes()` and `Host.getOneOffFiles()` short-circuit on the same flag.
+
+**This is a deliberate-conflation hot-fix, called out explicitly here per the resolution agreement with lucas42.** `is_storage_only` semantically means "this host has no docker volumes or one-off files of its own to back up" — used by `getVolumes()` / `getOneOffFiles()` to short-circuit *source-side* iteration. Reusing it in `Repository.backup` to mean "this host can't reach external HTTPS endpoints" is a **distinct concern** that *coincides* on aurora because aurora is currently the only host with both characteristics. They could diverge:
+
+- A future storage-only host with modern TLS would be unnecessarily skipped from repo download.
+- A future non-storage-only host with broken TLS would still hit the same failure mode.
+
+The proper separation — introducing a dedicated flag (e.g. `can_reach_external_services`) and switching `Repository.backup` to skip on that flag — is tracked in [`lucas42/lucos_backups#228`](https://github.com/lucas42/lucos_backups/issues/228) as P3. It's non-urgent because aurora is the only currently-affected host, and the conflation is documented at every surface a future maintainer would touch: the code comment at the skip line, the [Bug D issue](https://github.com/lucas42/lucos_backups/issues/229), the [fix PR description](https://github.com/lucas42/lucos_backups/pull/230), and this incident report. If we ever introduce a host that meets only one criterion of the conflation, [`#228`](https://github.com/lucas42/lucos_backups/issues/228) becomes blocking before that host's lucos_configy entry lands.
+
+### Why Bugs B, C, and D slipped through CI
+
+All three were missed by gaps in test coverage that the existing tests deliberately did not exercise:
 
 - **Bug B**: `tests/test_repository.py` contained only `__str__` tests. No test exercised `Repository.backup()` against more than one host with different `backup_root` values, so the missed `ROOT_DIR` threading never showed up. Added in `lucas42/lucos_backups#227`: `test_backup_uses_each_host_backup_root_in_mkdir`, `test_backup_uses_each_host_backup_root_in_archive_path`, `test_backup_no_hardcoded_root_dir_constant`.
 - **Bug C**: `tests/test_shell.py::TestHostOutboundSSH` already had ProxyJump tests covering `avalon._outbound_ssh_args(self.aurora)` (source ≠ gateway), added in v1.0.33 as a regression guard for `lucas42/lucos_backups#160`. They did not cover the source-is-gateway permutation, which is precisely the case that fails. Added in `lucas42/lucos_backups#227`: `test_outbound_ssh_args_skips_proxyjump_when_source_is_gateway`, `test_run_on_remote_no_proxyjump_when_source_is_gateway`.
+- **Bug D**: no test exercised `Repository.backup` against a host with `is_storage_only=True`, so neither the design intent (skip storage-only hosts) nor the runtime symptom (aurora's TLS handshake failure cascading into a loop-break) was visible to CI. Aurora's TLS limitation is also infrastructure-side, not code-side: even with full mock-host coverage on the source-side iteration, no unit test could have caught the TLS issue without a live aurora-shaped fixture. Added in `lucas42/lucos_backups#230`: `test_backup_skips_storage_only_hosts` and `test_backup_does_not_skip_non_storage_only_hosts`. The first one positions an `is_storage_only=True` host first in iteration to specifically cover the order-of-iteration consequence that motivated the hot-fix.
 
-The wider pattern across all three bugs is the same: **`lucas42/lucos_backups#218`'s design contemplated a single multi-host topology change, but the implementation and its tests treated each host pairing as essentially identical.** The configy null-vs-absent shape (Bug A), per-host parameterisation in repos (Bug B), and the source-is-gateway permutation (Bug C) all exist because the test coverage exercises a single representative host pair rather than the full N×N matrix of source/destination/gateway combinations.
+The wider pattern across all four bugs is the same: **`lucas42/lucos_backups#218`'s design contemplated a single multi-host topology change, but the implementation and its tests treated each host pairing as essentially identical.** The configy null-vs-absent shape (Bug A), per-host parameterisation in repos (Bug B), the source-is-gateway permutation (Bug C), and the host-capability-conflation pattern (Bug D) all exist because the test coverage exercises a single representative host pair rather than the full N×N matrix of source/destination/gateway/external-reachability combinations.
 
 ---
 
@@ -137,8 +187,9 @@ The wider pattern across all three bugs is the same: **`lucas42/lucos_backups#21
 
 - **v1.0.33 (07:14 UTC) was not the fix for Bug A.** It added regression tests for `_outbound_ssh_args` in response to a separate concern (`lucas42/lucos_backups#160`), but did not address the `backup_root` null bug. After this deploy the symptoms persisted unchanged — confirming that whatever was failing was not what v1.0.33 fixed and pointing the investigation at the new aurora code path specifically. As a side-effect of how its tests were scoped, v1.0.33 also did not detect Bug C (the source-is-gateway permutation): its new tests covered `avalon._outbound_ssh_args(aurora)` only.
 - **v1.0.34 (10:00 UTC) was not a complete fix either.** It correctly addressed Bug A, restoring `host-tracking-failures` and `volume-host` to green. But because the create-backups cron had previously crashed before reaching the repository loop, Bugs B and C were not visible from CI nor from `/_info` checks, only from running the cron end-to-end. The first ad-hoc rerun at 11:07 UTC was the moment those two bugs became observable.
+- **v1.0.35 (12:00 UTC) was not a complete fix either.** It correctly addressed Bugs B and C, but Bug D was latent under Bug B — when aurora's `mkdir` failed (Bug B), `wget` never ran on aurora, so its TLS limitation was invisible. Once Bug B's path threading let `mkdir` succeed, `wget` ran and Bug D surfaced as the dominant failure mode. The second ad-hoc rerun at 12:01 UTC was the moment Bug D became observable.
 
-In hindsight, the lesson is that **a single ad-hoc rerun should be considered the authoritative verification step after any fix to a cron-triggered code path**, not optional. The morning's first ad-hoc rerun was treated as routine confirmation; instead it surfaced two further deterministic bugs that would have re-broken tonight's scheduled cron.
+In hindsight, the same lesson generalised across the day: **after every fix to a cron-triggered code path, a fresh end-to-end ad-hoc rerun should be treated as authoritative verification, not optional confirmation.** Each of the morning's reruns surfaced *deterministic* further bugs (not flakes — they reproduced on every iteration) that would have re-broken the next scheduled cron. The pattern of "fix-X-unmasks-Y" is itself a signal that the original design's test coverage was insufficient at the multi-host integration level. Tracked as a process improvement in [`lucas42/lucos_claude_config#50`](https://github.com/lucas42/lucos_claude_config/issues/50).
 
 ---
 
@@ -148,6 +199,8 @@ In hindsight, the lesson is that **a single ad-hoc rerun should be considered th
 |---|---|---|
 | Fix Bug A: `backup_root` and `shell_flavour` to treat `null` as absent | [`lucas42/lucos_backups#222`](https://github.com/lucas42/lucos_backups/pull/222) | Done (merged 2026-04-28) |
 | Fix Bugs B + C: thread `backup_root` through `Repository.backup`; skip ProxyJump when source is the gateway. Includes 5 new regression tests covering the missed permutations. | [`lucas42/lucos_backups#227`](https://github.com/lucas42/lucos_backups/pull/227) (closing [`lucas42/lucos_backups#226`](https://github.com/lucas42/lucos_backups/issues/226)) | Done (merged 2026-04-28) |
+| Fix Bug D: skip `is_storage_only` hosts in `Repository.backup` so aurora's old TLS doesn't break the per-repo for-loop. Includes 2 new regression tests covering the order-of-iteration consequence and a belt-and-braces guard against an over-broad skip. | [`lucas42/lucos_backups#230`](https://github.com/lucas42/lucos_backups/pull/230) (closing [`lucas42/lucos_backups#229`](https://github.com/lucas42/lucos_backups/issues/229)) | Done (merged 2026-04-28) |
+| Separate `is_storage_only` from a dedicated "can-reach-external-services" flag, so `Repository.backup` skips on the right concern. The Bug D hot-fix conflates two distinct properties of aurora that happen to coincide today; this issue tracks the proper separation. Non-urgent because aurora is currently the only affected host. | [`lucas42/lucos_backups#228`](https://github.com/lucas42/lucos_backups/issues/228) | Open |
 | Add a dev/prod parity test that loads host config via the configy HTTP API rather than the local YAML, so this class of "absent vs explicit-null" bug is caught in CI | [`lucas42/lucos_backups#223`](https://github.com/lucas42/lucos_backups/issues/223) | Open |
 | Emit a `backups` Loganne event with `success=false` (and error detail) when the cron crashes, so detection has a positive failure signal rather than relying on the absence of an expected event. (In this incident the cron crashed before reaching the success-path Loganne emit, leaving silence on the wire — schedule-tracker only saw "expected event missing", which is harder to act on than "this run failed because X".) | [`lucas42/lucos_backups#224`](https://github.com/lucas42/lucos_backups/issues/224) | Open |
 | Run the backup cron every 12h with a skip-if-fresh check, so that a missed/crashed run auto-recovers ~12 hours later instead of waiting 24h for the next nightly cycle. (Originally framed in [`lucas42/lucos_schedule_tracker#64`](https://github.com/lucas42/lucos_schedule_tracker/issues/64) as "review the 2-error tolerance"; the architect superseded that approach with a cadence change in `lucos_backups` itself, giving both auto-recovery and faster detection without altering schedule-tracker semantics. `#64` closed as superseded.) | [`lucas42/lucos_backups#225`](https://github.com/lucas42/lucos_backups/issues/225) | Open |
