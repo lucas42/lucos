@@ -84,6 +84,8 @@ The actual fix landed first time. No other dead-ends.
 |---|---|---|
 | Fix `backup_root` and `shell_flavour` to treat `null` as absent | [`lucas42/lucos_backups#222`](https://github.com/lucas42/lucos_backups/pull/222) | Done (merged 2026-04-28) |
 | Add a dev/prod parity test that loads host config via the configy HTTP API rather than the local YAML, so this class of "absent vs explicit-null" bug is caught in CI | Not yet tracked — will raise after this report merges | Open |
+| Review whether the schedule-tracker 2-error tolerance for `lucos_backups` should be reduced to 1, or document the reasoning for keeping it at 2. (One missed nightly cron for an estate-wide backup is data-at-risk; a one-error tolerance would have flagged this incident at 03:25 UTC instead of waiting for the morning ops check.) | Not yet tracked — will raise after this report merges | Open |
+| Investigate whether deploy-window suppression can be narrowed so that `/_info` failures that persist beyond the deploy window are not masked by deploy churn. (In this incident the `host-tracking-failures` and `volume-host` checks were continuously failing from 03:25 UTC onwards, but the post-07:14 deploy of v1.0.33 made the persistent failure visually indistinguishable from the post-deploy flap pattern documented in [`lucas42/lucos_monitoring#186`](https://github.com/lucas42/lucos_monitoring/issues/186) / [`lucas42/lucos_monitoring#195`](https://github.com/lucas42/lucos_monitoring/pull/195).) | Not yet tracked — will raise after this report merges | Open |
 
 ---
 
