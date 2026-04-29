@@ -109,7 +109,8 @@ Worth noting one mis-step in coordination: the SRE initially told team-lead that
 | Fix admin static asset omission on lucos_contacts | [`lucas42/lucos_contacts#672`](https://github.com/lucas42/lucos_contacts/pull/672) | Done |
 | Add CI assertion that admin static files exist in the `lucos_eolas` web image | [`lucas42/lucos_eolas#219`](https://github.com/lucas42/lucos_eolas/issues/219) | Open |
 | Add CI assertion that admin static files exist in the `lucos_contacts` web image | [`lucas42/lucos_contacts#673`](https://github.com/lucas42/lucos_contacts/issues/673) | Open |
-| Update `lucos-site-reliability` persona instructions: do not infer "needs manual merge" from `auto_merge: null` or a skipped `reusable/auto-merge` check; verify by checking for `.github/workflows/code-reviewer-auto-merge.yml` instead | TBD — direct edit to persona file | Open |
+| Update `lucos-site-reliability` persona instructions: do not infer "needs manual merge" from `auto_merge: null` or a skipped `reusable/auto-merge` check; verify by checking for `.github/workflows/code-reviewer-auto-merge.yml` instead | `lucas42/lucos_claude_config@aab1bec` | Done |
+| Update `lucos-code-reviewer` persona instructions: same auto-merge misconception, applied independently | `lucas42/lucos_claude_config@f56afde` | Done |
 
 ---
 
