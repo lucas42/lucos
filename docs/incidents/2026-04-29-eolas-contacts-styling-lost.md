@@ -111,6 +111,7 @@ Worth noting one mis-step in coordination: the SRE initially told team-lead that
 | Add CI assertion that admin static files exist in the `lucos_contacts` web image | [`lucas42/lucos_contacts#673`](https://github.com/lucas42/lucos_contacts/issues/673) | Open |
 | Update `lucos-site-reliability` persona instructions: do not infer "needs manual merge" from `auto_merge: null` or a skipped `reusable/auto-merge` check; verify by checking for `.github/workflows/code-reviewer-auto-merge.yml` instead | `lucas42/lucos_claude_config@aab1bec` | Done |
 | Update `lucos-code-reviewer` persona instructions: same auto-merge misconception, applied independently | `lucas42/lucos_claude_config@f56afde` | Done |
+| Add a runtime UI-integrity check to `lucos_monitoring` for services whose primary interface is a rendered HTML UI (e.g. eolas, contacts) — detects 404s on canonical static assets and missing `<link rel="stylesheet">` references in the landing page. Came out of post-incident discussion with `lucos-ux`. | [`lucas42/lucos_monitoring#207`](https://github.com/lucas42/lucos_monitoring/issues/207) | Open |
 
 ---
 
