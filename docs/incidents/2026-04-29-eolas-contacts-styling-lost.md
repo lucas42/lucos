@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-04-29 |
-| **Duration** | ~6 hours 29 minutes (16:14 UTC to 22:43 UTC eolas; 16:14 UTC to ~22:46 UTC contacts) |
+| **Duration** | ~6 hours 29 minutes (eolas: 16:14 UTC → 22:43 UTC; contacts: 16:14 UTC → 22:48 UTC) |
 | **Severity** | Partial degradation — services functional but UIs unusable (every Django admin page rendered as unstyled HTML) |
 | **Services affected** | `lucos_eolas` (eolas.l42.eu), `lucos_contacts` (contacts.l42.eu) |
 | **Detected by** | User report from lucas42 |
@@ -36,7 +36,7 @@ Earlier in the day, two PRs landed that consolidated each service's Docker build
 | 22:41 | `lucas42/lucos_contacts#671` filed (P1) and `lucas42/lucos_contacts#672` opened with the same four-line fix. |
 | 22:43 | `lucos_eolas:v1.0.29` deploys to avalon. `eolas.l42.eu/resources/admin/css/base.css` returns 200. eolas styling restored. |
 | 22:43 | PR #672 merged. |
-| ~22:46 | `lucos_contacts:v1.0.30` deploys to avalon. contacts styling restored. |
+| 22:48 | `lucos_contacts:v1.0.30` deploys to avalon. `contacts.l42.eu/resources/admin/css/base.css` returns 200. contacts styling restored. |
 
 ---
 
