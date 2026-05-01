@@ -71,7 +71,7 @@ Nothing went wrong during the response itself — diagnosis was clean and the ho
 | Action | Issue / PR | Status |
 |---|---|---|
 | Hotfix shipped (try/catch in `temporal-matcher.js` and `server.js`, plus tests) | `lucas42/lucos_time#251` | Done (merged 11:42:45) |
-| Consider an integration test that exercises every `temporal_id`-populated calendar against the current date in CI, so a polyfill-bad date is caught before merge | — | Open for `lucos_time` if deemed worthwhile |
+| Consider an integration test that exercises every `temporal_id`-populated calendar against the current date in CI, so a polyfill-bad date is caught before merge | `lucas42/lucos_time#252` | Open — discussion |
 
 ---
 
