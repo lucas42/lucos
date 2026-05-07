@@ -73,7 +73,7 @@ This was the proximate reason `webhook-error-rate` stayed red — but the deeper
 
 Once 115 events were stranded with `url` pointing at `id.loc.gov`, no amount of retrying could clear them — retries re-deliver the stored payload, they don't re-fetch the URL from the source. With no DELETE API, the only ways to clear the alert were (a) wait 90 days for auto-trim, (b) manually edit `events.json` on the host, or (c) lose the alert visibility.
 
-This is captured for separate follow-up: a P3 issue on `lucos_loganne` proposing a delete/expire API would give us a non-invasive path the next time a misrouted-class of webhook gets stranded.
+This is by design and will not be addressed: event deletion is intended to remain an exceptional, host-level operation, and exposing it via an API would reduce that friction in an undesirable way. The trade-off is accepted: when a class of misrouted-webhook stranding recurs, clearing it requires docker access on the loganne host (as in this incident's resolution) rather than an API call.
 
 ### Detection / triage
 
@@ -99,7 +99,7 @@ This is captured for separate follow-up: a P3 issue on `lucos_loganne` proposing
 | Add `get_webhook_url()` to eolas; use it in post_save signal; override on `LanguageFamily` | lucas42/lucos_eolas#237 → lucas42/lucos_eolas#238 | Done (merged 23:22, deployed 23:27) |
 | Restrict arachne `authorised_fetch` to lucos-host destinations; reapply origin check on redirect | lucas42/lucos_arachne#443 | Open |
 | Rotate `KEY_LUCOS_EOLAS` (leaked to id.loc.gov 42+ times) | (handled by lucas42 via lucos_creds Refresh) | Done |
-| Add DELETE / expire API to loganne so misrouted events can be cleared without host-level intervention | TBD — not yet filed | Pending team-lead decision |
+| Add DELETE / expire API to loganne so misrouted events can be cleared without host-level intervention | n/a — declined | Won't fix. lucas42's call (2026-05-07): event deletion should remain an exceptional, host-level operation; making it API-accessible is undesirable friction reduction |
 | SRE memory: sample webhook error distribution before bulk-retrying | `feedback_sample_webhook_errors_first.md` | Done |
 | SRE persona: don't `cc` agents in issue bodies | `~/.claude/agents/lucos-site-reliability.md` (commit 46e3593) | Done |
 
