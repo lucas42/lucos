@@ -28,7 +28,8 @@ A new `_metric_pull_rate()` canary in `lucos_docker_mirror_info` opened `/var/lo
 | 11:43 | SRE investigation begins. Monitoring API confirms 2 failing systems, `docker.l42.eu` and `schedule-tracker.l42.eu` |
 | ~11:46 | Container logs on avalon show the gunicorn worker timeout signature: `[CRITICAL] WORKER TIMEOUT` followed by Python traceback ending at `_metric_pull_rate()` `for line in f:`. SRE inspects the volume contents: `ls -la /var/log/nginx/` in the info container shows `access.log -> /dev/stdout` and `error.log -> /dev/stderr` |
 | 11:50 | Root cause confirmed. Revert PR `lucas42/lucos_docker_mirror#58` opened |
-| 11:56:05 | `lucos-code-reviewer` approves; auto-merge workflow lands the revert |
+| 11:55:45 | `lucos-code-reviewer` approves the revert |
+| 11:56:05 | Auto-merge workflow lands the revert on `main` |
 | 11:57 | CI begins building/deploying the reverted version (CircleCI pipeline 90, workflow `build-deploy`) |
 | ~11:59 | Deploy completes. Web, info, and registry containers all transition to `healthy` on image `1.0.22`. `/_info` returns the expected payload with no `docker_mirror_pull_count` metric (correctly removed by the revert) |
 | 12:00 | Monitoring API confirms `docker.l42.eu` recovered (`failing: 0`); `schedule-tracker / lucos_docker_health_avalon` already healthy. Verification window passes — no new alerts |
