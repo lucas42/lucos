@@ -97,7 +97,7 @@ This is by design and will not be addressed: event deletion is intended to remai
 | Action | Issue / PR | Status |
 |---|---|---|
 | Add `get_webhook_url()` to eolas; use it in post_save signal; override on `LanguageFamily` | lucas42/lucos_eolas#237 → lucas42/lucos_eolas#238 | Done (merged 23:22, deployed 23:27) |
-| Restrict arachne `authorised_fetch` to lucos-host destinations; reapply origin check on redirect | lucas42/lucos_arachne#443 | Open |
+| Restrict arachne `authorised_fetch` to lucos-host destinations; reapply origin check on redirect | lucas42/lucos_arachne#443 → lucas42/lucos_arachne#444 | Done (merged 23:51) |
 | Rotate `KEY_LUCOS_EOLAS` (leaked to id.loc.gov 42+ times) | (handled by lucas42 via lucos_creds Refresh) | Done |
 | Add DELETE / expire API to loganne so misrouted events can be cleared without host-level intervention | n/a — declined | Won't fix. lucas42's call (2026-05-07): event deletion should remain an exceptional, host-level operation; making it API-accessible is undesirable friction reduction |
 | SRE memory: sample webhook error distribution before bulk-retrying | `feedback_sample_webhook_errors_first.md` | Done |
