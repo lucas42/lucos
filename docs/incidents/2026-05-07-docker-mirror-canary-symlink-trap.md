@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-05-07 |
-| **Duration** | ~30 minutes (11:27 UTC to ~11:57 UTC, deploy verification still in flight at time of writing) |
+| **Duration** | ~33 minutes (11:27 UTC to 12:00 UTC) |
 | **Severity** | Partial degradation — monitoring alerts active, but mirror traffic continued to flow |
 | **Services affected** | `lucos_docker_mirror_web` and `lucos_docker_mirror_info` (unhealthy); `schedule-tracker / lucos_docker_health_avalon` flapped |
 | **Detected by** | Monitoring alert flagged inline by lucas42 (within minutes of the deploy) |
@@ -29,9 +29,9 @@ A new `_metric_pull_rate()` canary in `lucos_docker_mirror_info` opened `/var/lo
 | ~11:46 | Container logs on avalon show the gunicorn worker timeout signature: `[CRITICAL] WORKER TIMEOUT` followed by Python traceback ending at `_metric_pull_rate()` `for line in f:`. SRE inspects the volume contents: `ls -la /var/log/nginx/` in the info container shows `access.log -> /dev/stdout` and `error.log -> /dev/stderr` |
 | 11:50 | Root cause confirmed. Revert PR `lucas42/lucos_docker_mirror#58` opened |
 | 11:56:05 | `lucos-code-reviewer` approves; auto-merge workflow lands the revert |
-| ~11:57 | CI begins building/deploying the reverted version |
-| TBD | New deploy completes; both containers transition to `healthy`; `docker.l42.eu / fetch-info` and `schedule-tracker / lucos_docker_health_avalon` recover |
-| TBD | Verification window (2 min after deploy) confirms no new alerts triggered by the change |
+| 11:57 | CI begins building/deploying the reverted version (CircleCI pipeline 90, workflow `build-deploy`) |
+| ~11:59 | Deploy completes. Web, info, and registry containers all transition to `healthy` on image `1.0.22`. `/_info` returns the expected payload with no `docker_mirror_pull_count` metric (correctly removed by the revert) |
+| 12:00 | Monitoring API confirms `docker.l42.eu` recovered (`failing: 0`); `schedule-tracker / lucos_docker_health_avalon` already healthy. Verification window passes — no new alerts |
 
 ---
 
@@ -81,10 +81,10 @@ The original PR's intent (a canary on `docker_mirror_pull_count` to detect silen
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Revert PR #57 to restore `/_info` health | lucas42/lucos_docker_mirror#58 | Merged 11:56:05Z, deploy verification in flight |
-| File follow-up issue with the four fix options for re-implementing the metric | lucas42/lucos_docker_mirror (TBD) | Pending |
-| Clean up the orphan `logs` volume left on avalon by #57's first-init (otherwise the symlinks persist for any future re-attempt) | lucas42/lucos_docker_mirror (TBD) | Pending |
-| Verify monitoring API + `schedule-tracker / lucos_docker_health_avalon` recover post-deploy | — | TBD |
+| Revert PR #57 to restore `/_info` health | lucas42/lucos_docker_mirror#58 | Merged 11:56Z, deployed 11:59Z, verified healthy 12:00Z |
+| File follow-up issue with the four fix options for re-implementing the metric | lucas42/lucos_docker_mirror#59 | Open |
+| Clean up the orphan `logs` volume left on avalon by #57's first-init (otherwise the symlinks persist for any future re-attempt) | lucas42/lucos_docker_mirror#59 (covered) | Pending |
+| Verify monitoring API + `schedule-tracker / lucos_docker_health_avalon` recover post-deploy | — | Done |
 
 ---
 
