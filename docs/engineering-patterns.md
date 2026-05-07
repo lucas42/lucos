@@ -2,7 +2,7 @@
 
 A reference for how lucOS systems are actually built and operated. This document describes the conventions, patterns, and standards in use across the ecosystem -- not aspirations, but reality as it stands today.
 
-Last updated: 2026-04-09
+Last updated: 2026-05-07
 
 ---
 
@@ -132,6 +132,16 @@ The router generates its Nginx config from `lucos_configy` and routes `{domain}`
 
 DNS is managed by `lucos_dns`, which contains two containers: a BIND name server and a Python sync process that generates zone files from `lucos_configy` data.
 
+### Real-time push: choosing a protocol
+
+Three patterns exist in the estate for pushing updates from a service to its clients in real time. **SSE is the default** for one-way server→client push. Use **WebSocket** only when bidirectional traffic is genuinely required. **Long polling** is a recognised legacy pattern (currently `lucos_media_manager`); new code should not adopt it, and existing implementations may migrate to SSE when the relevant service is being touched anyway.
+
+| Pattern | Direction | When to choose |
+|---|---|---|
+| **Server-Sent Events** | one-way (server → client) | Default for one-way push. Native browser API (`EventSource`), built-in auto-reconnect, plain HTTP semantics, no router cooperation needed. |
+| **WebSocket** | bidirectional | The client genuinely needs to send messages back over the same connection. |
+| **Long polling** | one-way (server → client) | Legacy only -- do not adopt for new code. |
+
 ### WebSockets
 
 WebSocket connections are supported through `lucos_router` without any per-service configuration. The router's Nginx template includes a convention-based location block that matches two URL patterns:
@@ -180,6 +190,38 @@ const socket = new WebSocket(`${protocol}://${location.host}/stream`);
 ```
 
 Clients implement automatic reconnection on close (typically with a short delay) since WebSocket connections are inherently less stable than HTTP requests.
+
+### Server-Sent Events
+
+Server-Sent Events (SSE) is the default for one-way server→client push. Browsers have a native `EventSource` API with built-in auto-reconnect, the wire protocol is plain HTTP/1.1, and `lucos_router` requires no special configuration to support it.
+
+The convention path is **`/event-stream`** -- exact match. The path mirrors the SSE `Content-Type` (`text/event-stream`) verbatim and is a sibling-shape to `/stream` for WebSocket: both are "stream" patterns, with the protocol qualifier distinguishing them. If a service ever needs multiple SSE streams on one domain, use `/event-stream/<name>`.
+
+#### Router-side: nothing to configure
+
+Unlike WebSocket -- which requires `Upgrade`/`Connection: Upgrade` header pass-through and the explicit `/stream` carve-out in `lucos_router/templates/https.conf` -- SSE works through the router's default location block without any router cooperation. There is nothing to add to `lucos_router`, `lucos_configy`, or any per-service Nginx config.
+
+#### Backend pattern
+
+The handler is responsible for everything SSE-related:
+
+- Set the SSE response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
+- Set **`X-Accel-Buffering: no`** -- nginx honours this header from the upstream specifically to disable response buffering for SSE. Without it, the router will buffer events and they will not reach the client in real time.
+- Emit an SSE comment-frame heartbeat (`: ping\n\n`) every ~25s. nginx's default `proxy_read_timeout` is 60s, so a stream with no events will be closed by the router without a heartbeat. The browser's `EventSource` would then auto-reconnect, but the churn is avoidable and a heartbeat is cheap.
+
+#### Client pattern
+
+Browser clients connect to the same host as the page using the native `EventSource` API:
+
+```javascript
+const stream = new EventSource('/event-stream');
+stream.addEventListener('message', (event) => {
+    const data = JSON.parse(event.data);
+    // ...
+});
+```
+
+`EventSource` reconnects automatically on connection loss -- no client-side reconnection code needed.
 
 ### Inter-service communication
 
