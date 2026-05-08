@@ -63,6 +63,14 @@ The conceptual confusion was conflating **"the canonical identifier for an entit
 
 The token was rotated by lucas42 in parallel with the fix. Tracked in lucas42/lucos_arachne#443.
 
+### Contributing: arachne webhook ingestor isn't burst-tolerant
+
+The arachne ingestor (`ingestor/server.py`) processes each incoming webhook synchronously inside the request — fetch the source URL, parse RDF, run the validator, write to the triplestore — before returning a response. This worked fine for typical estate-wide event rates but degraded hard against the 117-events-in-58-seconds burst from `load_language_families`. The webhook port itself stopped accepting new connections at 22:45:25 (`monitoringAlert: ingestor` from arachne), recovering at 22:47:26.
+
+The same shape recurred during the post-fix re-run at 23:40 (68 events in ~30 seconds, 23 produced 504s — most cleared by loganne's auto-retry, the rest needed manual SRE intervention).
+
+The pattern is independent of tonight's URL bug: any source emitting a burst above arachne's per-process synchronous-processing capacity will produce the same cascade of 504s and stranded loganne webhooks. Tracked for fix as lucas42/lucos_arachne#445 (P3); recommended approach is the standard accept-and-enqueue pattern (return 200 immediately, process async).
+
 ### Contributing: loganne webhook auto-retry only once
 
 When the initial burst overwhelmed arachne and produced 504s, loganne's once-only auto-retry policy (already documented in agent memory) gave up on most of them as permanent failures. Even after arachne recovered seconds later, the events were marked terminal `failure` and would never have been re-delivered without manual API calls.
@@ -77,9 +85,9 @@ This is by design and will not be addressed: event deletion is intended to remai
 
 ### Detection / triage
 
-- The `arachne ingestor` alert at 22:45 was a useful signal but was a transient symptom rather than the actual problem; it self-recovered in 2 minutes.
+- The `arachne ingestor` alert at 22:45 was a useful signal — it correctly identified a real degradation (the webhook port refusing new connections under sync-processing load) but the symptom self-recovered in 2 minutes once the burst ended. It pointed at a contributing factor (the burst-tolerance gap, lucas42/lucos_arachne#445) rather than the root cause (the URL-routing bug).
 - The `loganne webhook-error-rate` alert was the right indicator that something needed attention. It correctly stayed red until manually cleared.
-- lucas42's hunch ("the language-family load might be the trigger") was correct on the trigger but framed the problem as load-related; the actual cause was structural URL semantics. Sampling the distribution of `e.webhooks.errorMessage` across the failure set early (per the new `feedback_sample_webhook_errors_first.md` memory rule) would have caught this within seconds had it been done before any retry attempts.
+- lucas42 (relayed via team-lead) correctly identified the `load_language_families` run as the trigger. The "load-related mechanism" framing that delayed the structural diagnosis was SRE's own initial hypothesis on top of that — not anything lucas42 had claimed. Sampling the distribution of `e.webhooks.errorMessage` across the failure set early (per the new `feedback_sample_webhook_errors_first.md` memory rule) would have caught the structural cause within seconds had it been done before any retry attempts.
 
 ---
 
@@ -100,6 +108,7 @@ This is by design and will not be addressed: event deletion is intended to remai
 | Restrict arachne `authorised_fetch` to lucos-host destinations; reapply origin check on redirect | lucas42/lucos_arachne#443 → lucas42/lucos_arachne#444 | Done (merged 23:51) |
 | Rotate `KEY_LUCOS_EOLAS` (leaked to id.loc.gov 42+ times) | (handled by lucas42 via lucos_creds Refresh) | Done |
 | Add DELETE / expire API to loganne so misrouted events can be cleared without host-level intervention | n/a — declined | Won't fix. lucas42's call (2026-05-07): event deletion should remain an exceptional, host-level operation; making it API-accessible is undesirable friction reduction |
+| Make arachne's webhook ingestor burst-tolerant (accept-and-enqueue, return 200 immediately, process async). Tonight's two cascades both passed through arachne 504s as a contributing layer; the ingestor port itself dropped at 22:45 under sync-processing load | lucas42/lucos_arachne#445 | Open — P3 |
 | SRE memory: sample webhook error distribution before bulk-retrying | `feedback_sample_webhook_errors_first.md` | Done |
 | SRE persona: don't `cc` agents in issue bodies | `~/.claude/agents/lucos-site-reliability.md` (commit 46e3593) | Done |
 
