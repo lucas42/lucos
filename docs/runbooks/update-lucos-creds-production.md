@@ -86,9 +86,15 @@ Once the pipeline completes:
 
 The most likely cause is that `LUCOS_DEPLOY_ENV_BASE64` was not updated (or was updated with the wrong value). To diagnose:
 
-1. Fetch `.env` from the running container:
+1. Inspect the credential in the running containers. For **SSH key credentials** (`CONFIGY_SYNC_PRIVATE_SSH_KEY`, `UI_PRIVATE_SSH_KEY`), each container writes its key to a file at startup — check the file:
    ```bash
-   ssh avalon.s.l42.eu "docker exec lucos_creds_server cat /app/.env"
+   ssh avalon.s.l42.eu "docker exec lucos_creds_configy_sync cat /root/.ssh/id_ed25519"
+   ssh avalon.s.l42.eu "docker exec lucos_creds_ui cat /root/.ssh/id_ed25519"
+   ```
+   For **other credentials**, check the environment variable directly:
+   ```bash
+   ssh avalon.s.l42.eu "docker exec lucos_creds_configy_sync printenv VARNAME"
+   ssh avalon.s.l42.eu "docker exec lucos_creds_ui printenv VARNAME"
    ```
 2. If the credential shows the old value, the snapshot is stale. Re-do steps 2–5 of this runbook.
 3. If the credential shows the expected new value but the dependent service still fails, the issue is elsewhere — check the dependent service's container logs.
