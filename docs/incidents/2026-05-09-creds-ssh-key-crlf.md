@@ -96,10 +96,10 @@ I sent an intermediate report to team-lead at 13:32Z attributing the failed rede
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Document the dual-update requirement for production credentials in lucos_creds (live store **and** `LUCOS_DEPLOY_ENV_BASE64`); add to operational runbook | Sysadmin to file separately | Pending |
-| Add a build-time CI assertion in `lucos_creds` to refuse SSH-key env vars containing characters outside `\n` + the base64 alphabet + PEM wrapper text — catches CRLF, BOM, `~`-substitution, literal `\n`, leading/trailing whitespace | TBD — to be filed by lucos-site-reliability | Open |
-| Improve the `Load key: error in libcrypto` diagnostic in the `ssh-server` `/_info` check — emit the first 16 bytes of the body in escaped form so future incidents can spot CRLF/BOM at a glance without filesystem access | TBD — to be filed by lucos-site-reliability | Open |
-| Consider auto-syncing `LUCOS_DEPLOY_ENV_BASE64` from the live store as part of any credential change touching lucos_creds itself (architectural — likely needs lucos-architect input on how to do this without re-introducing the circular dependency) | TBD | Open |
+| Document the dual-update requirement for production credentials in lucos_creds (live store **and** `LUCOS_DEPLOY_ENV_BASE64`); add to operational runbook | lucas42/lucos_creds#304 | Open |
+| In-product warning in lucos_creds_ui at credential-edit time when serving its own production credentials (belt-and-braces over the README/runbook fix) | lucas42/lucos_creds#305 | Open |
+| Validate `UI_PRIVATE_SSH_KEY` / `CONFIGY_SYNC_PRIVATE_SSH_KEY` at container startup before writing to disk — reject CRLF, `~`-substitution, literal `\n`, missing PEM wrapper. Surfaces the failure at startup with a clear human-readable error rather than as a libcrypto puzzle | lucas42/lucos_creds#306 | Open |
+| Consider auto-syncing `LUCOS_DEPLOY_ENV_BASE64` from the live store as part of any credential change touching lucos_creds itself (architectural — needs lucos-architect input on how to do this without re-introducing the circular dependency from #152) | TBD | Not yet filed |
 
 ---
 
