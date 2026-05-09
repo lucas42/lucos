@@ -12,7 +12,7 @@
 
 ## Summary
 
-A routine SSH key rotation for the `lucos-backups` user left every backup-target host's `authorized_keys` file holding the old public key. The `rotate-ssh-key.sh` script writes the new keypair to lucos_creds but does not push the new public key to any host. Three of the four hosts (avalon, salvare, xwing) were unstuck by re-running `init-host.sh`. The fourth (aurora.local, a kernel-3.4.6 armv5tel QNAP box with both busybox userland and a non-`/home` user-home layout — `/share/homes/$user`) failed at multiple points: the original `init-host.sh` never ran end-to-end on it (it had a manually-bootstrapped `.ssh/` directory at the QNAP-style path dating back to its original setup), and the new `update-authorized-keys.sh` script introduced in the recovery (PR lucas42/lucos_backups#267) initially had the same `/home/${USERNAME}/` path-hardcoding bug. After a path-expansion fix to the new script, lucas42 ran it against aurora and authentication recovered. No backup data was lost — the daily backup window had not yet fired — but the tracking daemon was unable to enumerate any host's volumes for the duration, and the next backup run would have failed on every host had the auth not been restored in time.
+An SSH key rotation for the `lucos-backups` user — performed as the documented post-merge step for PR lucas42/lucos_backups#265 — left every backup-target host's `authorized_keys` file holding the old public key. The rotation was not a discretionary maintenance task: PR #265 explicitly instructed lucas42 to run `rotate-ssh-key.sh` as the cleanest way to clear the `~`-encoded production credential value left behind by the substitution-workaround that #265 was removing (see lucas42/lucos_backups#262 for the underlying cleanup that drove this). The `rotate-ssh-key.sh` script writes the new keypair to lucos_creds but does not push the new public key to any host. Three of the four hosts (avalon, salvare, xwing) were unstuck by re-running `init-host.sh`. The fourth (aurora.local, a kernel-3.4.6 armv5tel QNAP box with both busybox userland and a non-`/home` user-home layout — `/share/homes/$user`) failed at multiple points: the original `init-host.sh` never ran end-to-end on it (it had a manually-bootstrapped `.ssh/` directory at the QNAP-style path dating back to its original setup), and the new `update-authorized-keys.sh` script introduced in the recovery (PR lucas42/lucos_backups#267) initially had the same `/home/${USERNAME}/` path-hardcoding bug. After a path-expansion fix to the new script, lucas42 ran it against aurora and authentication recovered. No backup data was lost — the daily backup window had not yet fired — but the tracking daemon was unable to enumerate any host's volumes for the duration, and the next backup run would have failed on every host had the auth not been restored in time.
 
 ---
 
@@ -22,9 +22,11 @@ All times UTC.
 
 | Time | Event |
 |---|---|
-| 00:33 | `SSH_PRIVATE_KEY` updated in `lucos_backups (development)` (probe / format check, related to lucas42/lucos_backups#262 cleanup) |
-| 00:39:23–24 | `SSH_PRIVATE_KEY` and `SSH_PUBLIC_KEY` updated in **both** dev and prod environments — the four-event signature of `rotate-ssh-key.sh` running |
-| 00:39:56 | lucas42/lucos_backups#265 merged (removed the `~`/`=` substitution workaround) |
+| (pre-incident) | lucas42/lucos_backups#262 raised: remove the `~`/`=` SSH-key character-substitution workaround now that lucos_creds supports `=` in stored values. Cleanup-driven, security-hygiene scope |
+| (pre-incident) | PR lucas42/lucos_backups#265 prepared to remove the substitution from `rotate-ssh-key.sh`, `init-host.sh`, `src/scripts/init-agent.sh`. PR body explicitly instructs lucas42 to run `rotate-ssh-key.sh` after merging as the cleanest way to clear the `~`-encoded production credential value before deploy |
+| 00:33 | `SSH_PRIVATE_KEY` updated in `lucos_backups (development)` — probe / format check ahead of the production rotation |
+| 00:39:23–24 | `rotate-ssh-key.sh` run against production: new ed25519 keypair generated and stored in lucos_creds for **both** dev and prod (the four-event signature is the script's four `ssh creds.l42.eu` writes). This was the documented post-merge step from PR #265's body |
+| 00:39:56 | PR lucas42/lucos_backups#265 merged |
 | 00:42:00 | v1.0.62 deployed to avalon |
 | 00:42:54 | Monitoring alert: `2 failing check(s) on lucos backups (backups.l42.eu): host-tracking-failures, volume-host` — daemon failed to authenticate to any of `aurora.local`, `avalon.s.l42.eu`, `salvare.s.l42.eu`, `xwing.s.l42.eu`. **Incident starts** |
 | 00:55:31 | Monitoring alert reduces from 2 failing to 1 failing — `volume-host` clears (cached volume-by-host data was still within the daemon's 2-hour freshness window, satisfying the check from cache); `host-tracking-failures` continues firing on all four hosts |
@@ -53,6 +55,8 @@ All times UTC.
 The rotation script writes the new keypair to lucos_creds and stops. It does not push the new `SSH_PUBLIC_KEY` to any host's `authorized_keys` file. The README treats `rotate-ssh-key.sh` and `init-host.sh` as independent manual setup steps, with no documented "after rotating, re-run `init-host.sh` on every host" instruction.
 
 This wasn't a regression introduced by lucas42/lucos_backups#265 — the procedural gap has been latent in `rotate-ssh-key.sh` since the script was first added (commit `06f645b` in lucas42/lucos_backups). It only bit today because today is the first time a rotation has actually been run. The script's behaviour was never wrong on its own terms; it just expected a follow-up step that nobody had been told they needed to take.
+
+What made the gap unavoidable today is that **the rotation was a non-discretionary follow-up step**, not an optional maintenance task. PR #265's body explicitly instructed running `rotate-ssh-key.sh` as the recommended way to clear the `~`-encoded production credential left behind by the substitution-workaround being removed. That made today the moment the latent procedural gap was bound to surface — anyone following PR #265's documented "before deploying" step would have been the trigger. There was no reasonable "defer the rotation" path; the production credential needed clearing before the deploy of #265's code-side change, and `rotate-ssh-key.sh` was the documented way to do it.
 
 ### Stage 2 — `init-host.sh` conflates first-time setup with key distribution
 
