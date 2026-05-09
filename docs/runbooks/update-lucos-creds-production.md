@@ -17,7 +17,7 @@ This means **two separate stores must be kept in sync**:
 | lucos_creds storage (the live key/value store) | `ssh -p 2202 creds.l42.eu lucos_creds/production/KEY=value` | All running services that read from `creds.l42.eu` at runtime |
 | `LUCOS_DEPLOY_ENV_BASE64` CircleCI env var | CircleCI project settings (see below) | The deploy pipeline, which writes `.env` from this snapshot on every deploy |
 
-**If you update only the lucos_creds value and trigger a redeploy, the CircleCI snapshot overwrites `.env` with the stale value.** The change appears to deploy successfully but is silently reverted. This is the failure mode that caused the 2026-05-09 incident.
+**If you update only the lucos_creds value, the credential change silently fails to take effect.** The deploy writes `.env` from `LUCOS_DEPLOY_ENV_BASE64`, not from the live store — so the running service always gets the snapshot value regardless of what you set in lucos_creds storage. The new credential value never propagates to the running containers. This is the failure mode that caused the 2026-05-09 incident.
 
 ### Security note: credential rotations during incidents
 
@@ -30,7 +30,7 @@ This dual-update requirement has a critical security dimension when **rotating a
 - `KEY_LUCOS_CREDS` (the master credential for the credential store itself)
 
 > [!WARNING]
-> **Rotating any credential present in `LUCOS_DEPLOY_ENV_BASE64` without also updating the CircleCI env var will silently undo the rotation on the next deploy.** The old (potentially compromised) credential comes back with no error or warning.
+> **Rotating any credential present in `LUCOS_DEPLOY_ENV_BASE64` without also updating the CircleCI env var means the rotation silently fails to take effect.** Credential values are written to `.env` from the snapshot at deploy time; the running service never sees the new value, with no error or warning.
 
 During incident response — exactly when the pressure to act fast is highest and steps are most likely to be missed — this is the step that matters most. Even under pressure, follow the full five-step procedure below.
 
@@ -97,7 +97,7 @@ Once the pipeline completes:
 
 ---
 
-## If a deploy appears to succeed but the credential reverts
+## If the credential fails to take effect after a deploy
 
 The most likely cause is that `LUCOS_DEPLOY_ENV_BASE64` was not updated (or was updated with the wrong value). To diagnose:
 
