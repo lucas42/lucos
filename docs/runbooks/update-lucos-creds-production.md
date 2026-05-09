@@ -19,6 +19,21 @@ This means **two separate stores must be kept in sync**:
 
 **If you update only the lucos_creds value and trigger a redeploy, the CircleCI snapshot overwrites `.env` with the stale value.** The change appears to deploy successfully but is silently reverted. This is the failure mode that caused the 2026-05-09 incident.
 
+### Security note: credential rotations during incidents
+
+This dual-update requirement has a critical security dimension when **rotating a credential after a suspected compromise**.
+
+**Scope:** this risk applies only to credentials in lucos_creds's *own* `.env`. Credentials lucos_creds stores on behalf of other services and delivers via the SCP path are **not** affected — those never go through `LUCOS_DEPLOY_ENV_BASE64`. The credentials in scope are:
+
+- `UI_PRIVATE_SSH_KEY`
+- `CONFIGY_SYNC_PRIVATE_SSH_KEY`
+- `KEY_LUCOS_CREDS` (the master credential for the credential store itself)
+
+> [!WARNING]
+> **Rotating any credential present in `LUCOS_DEPLOY_ENV_BASE64` without also updating the CircleCI env var will silently undo the rotation on the next deploy.** The old (potentially compromised) credential comes back with no error or warning.
+
+During incident response — exactly when the pressure to act fast is highest and steps are most likely to be missed — this is the step that matters most. Even under pressure, follow the full five-step procedure below.
+
 ---
 
 ## Step-by-step procedure
