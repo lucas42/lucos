@@ -52,13 +52,23 @@ These fields are relevant only for services that have a user-facing web UI. API-
 }
 ```
 
+An aggregate check that depends on more than one upstream system declares `dependsOn` as a list of system IDs:
+
+```json
+{
+  "ok": true,
+  "techDetail": "Aggregate error rate across all webhook subscribers",
+  "dependsOn": ["lucos_a", "lucos_b", "lucos_c"]
+}
+```
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `ok` | bool | Yes | Whether the check is currently passing. |
 | `techDetail` | string | Yes | A human-readable explanation of what the check verifies. |
 | `debug` | string | No | Diagnostic detail, typically included only when `ok` is `false`. |
 | `failThreshold` | integer | No | Number of consecutive failures required before monitoring alerts. Defaults to 1 (alert immediately). Use this for checks that are known to be flappy — e.g. a Fuseki SPARQL endpoint that occasionally hiccups. |
-| `dependsOn` | string | No | The ID of an upstream system this check depends on, as listed in [configy](https://configy.l42.eu/systems). When that system is being deployed (suppression active), alerts for this check are also suppressed. When the upstream system's suppression clears, this check enters `pending_verification` until a fresh result is received. Single-hop only — do not chain: if A depends on B and B depends on C, suppressing C does not suppress A's checks on B. |
+| `dependsOn` | string \| [string] | No | The ID (or list of IDs) of an upstream system this check depends on, as listed in [configy](https://configy.l42.eu/systems). A single string is the legacy shape and remains correct for any check that depends on exactly one upstream system. A list of strings is the aggregate / cross-cutting shape for checks whose value is sensitive to any of N upstream systems (e.g. a fan-out webhook error rate). **OR semantics** apply over the list: alerts for this check are suppressed if *any* listed system is currently being deployed; when *any* listed system's suppression clears, this check enters `pending_verification` until a fresh result is received. **Single-hop only** — list elements are not followed through their own `dependsOn` declarations: if A depends on B and B depends on C, suppressing C does not suppress A's checks on B. Both shapes share this invariant. See [ADR-0002 in lucos_monitoring](https://github.com/lucas42/lucos_monitoring/blob/main/docs/adr/0002-polymorphic-dependson.md) for the full rationale, including the deploy-loop self-reference involving loganne. |
 
 ### Metric object
 
