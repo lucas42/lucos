@@ -2,7 +2,9 @@
 
 How to get each agent to discover and work through its own backlog.
 
-There are two distinct types of work: **triaging** (lucos-issue-manager assessing issues, applying labels, consulting other agents inline, and routing to the right owner) and **implementing** (writing code, opening PRs). Triaging uses a dedicated triage script; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
+There are two distinct types of work: **triaging** (lucos-issue-manager assessing issues, setting Status / Priority / Owner on the project board, consulting other agents inline, and routing to the right owner) and **implementing** (writing code, opening PRs). Triaging uses a dedicated triage script; implementing uses a global dispatcher that picks the highest-priority issue across all repos and routes it to the correct persona.
+
+For the project field schema itself, see the [Project Field Reference](labels.md).
 
 ---
 
@@ -29,11 +31,11 @@ Ops checks run first so that any issues they raise are available for triage in P
 
 - `lucos-issue-manager` -- "triage your issues"
 
-The issue manager handles the full triage lifecycle in a single pass. When an issue needs input from another agent (e.g. architect, SRE, security), the issue manager messages that agent directly during triage, waits for their response, then re-assesses the issue. This continues until the issue is either `agent-approved` or needs input from lucas42.
+The issue manager handles the full triage lifecycle in a single pass. When an issue needs input from another agent (e.g. architect, SRE, security), the issue manager messages that agent directly during triage, waits for their response, then re-assesses the issue. This continues until the issue is either at Status = Ready or has Owner = lucas42 for a decision.
 
 **Phase 3** (after Phase 2): Summary for the user
 
-The dispatcher compiles a prioritised list of issues that need the user's attention (any open issue with `owner:lucas42`).
+The dispatcher compiles a prioritised list of issues that need the user's attention (any open issue with Owner = lucas42).
 
 ---
 
@@ -43,7 +45,7 @@ Only the issue manager triages issues. Other agents provide input when consulted
 
 ### lucos-issue-manager (triage)
 
-Triages issues (unlabelled, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`). When an issue needs specialist input, the issue manager messages the relevant agent directly via SendMessage, waits for their response, then re-assesses.
+Triages issues (untriaged, updated since last triage, or routed back to it). Uses its own triage script (`get-issues-for-triage`), which reads the project board for issues that need attention. When an issue needs specialist input, the issue manager messages the relevant agent directly via SendMessage, waits for their response, then re-assesses.
 
 ```
 lucos-issue-manager, triage your issues
@@ -51,7 +53,7 @@ lucos-issue-manager, triage your issues
 
 ### Other agents (consulted during triage)
 
-Agents like `lucos-architect`, `lucos-security`, `lucos-site-reliability`, `lucos-system-administrator`, and `lucos-developer` do not have their own issue review queues. Instead, the issue manager messages them directly during triage when their input is needed on a specific issue. The agent reads the issue, posts a comment with their input, and messages the issue manager back.
+Agents like `lucos-architect`, `lucos-security`, `lucos-site-reliability`, `lucos-system-administrator`, `lucos-developer`, and `lucos-ux` do not have their own issue review queues. Instead, the issue manager messages them directly during triage when their input is needed on a specific issue. The agent reads the issue, posts a comment with their input, and messages the issue manager back.
 
 ### lucos-code-reviewer
 
@@ -79,7 +81,7 @@ These are typically run in Phase 1 of `/routine` so any issues they raise are av
 
 ## Implementing issues
 
-Implementation is driven by the dispatcher, not individual agents. A single global script searches all repositories for `agent-approved`, non-blocked issues and returns the highest-priority, oldest-first match. The dispatcher routes it to the correct persona.
+Implementation is driven by the dispatcher, not individual agents. A single global script reads the project board for issues at Status = Ready (not Blocked) and returns the topmost item in the Ready column. The dispatcher routes it to the correct persona based on the Owner field.
 
 ```
 /next
@@ -88,8 +90,8 @@ Implementation is driven by the dispatcher, not individual agents. A single glob
 This is a custom Claude Code skill (defined in `~/.claude/skills/next/SKILL.md`).
 
 The dispatcher will:
-1. Run `get-next-implementation-issue`, which searches all repositories for `agent-approved`, open, non-blocked issues with an `owner:*` label and returns the highest-priority, oldest-first match.
-2. Read the `owner:*` label to determine which persona to dispatch (e.g. `owner:lucos-developer` -> launch `lucos-developer`).
+1. Run `get-next-implementation-issue`, which queries the project board for the topmost Ready, non-blocked item with an Owner set.
+2. Read the Owner field to determine which persona to dispatch (e.g. Owner = lucos-developer → launch `lucos-developer`).
 3. Pass the specific issue URL to the persona (e.g. "implement issue https://github.com/lucas42/lucos_photos/issues/42").
 4. The persona posts a starting comment, implements, and opens a PR.
 5. The implementation teammate then drives its own **review loop** with `lucos-code-reviewer` (see below).
@@ -113,10 +115,11 @@ All implementation agents run in the same sandbox. If multiple personas were dis
 
 ### Notes
 
-- `lucos-developer` is the default implementation persona. Most `agent-approved` issues will be assigned to it.
+- `lucos-developer` is the default implementation persona. Most Ready issues will be assigned to it.
 - `lucos-architect` handles ADR and architectural documentation issues.
 - `lucos-system-administrator` handles purely infrastructure issues.
 - `lucos-site-reliability` handles monitoring, logging, pipeline, and incident management issues.
 - `lucos-security` handles purely security issues.
+- `lucos-ux` handles frontend, accessibility, and copywriting work.
 - `lucos-issue-manager` handles workflow and process documentation issues.
 - The "implement" prompt is deliberately separate from triage to avoid multiple simultaneous changes that are hard to debug and expensive on credits.

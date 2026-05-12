@@ -1,80 +1,55 @@
-# Label Reference
+# Project Field Reference
 
-Labels used across lucos repositories to manage the issue workflow. Applied and managed solely by the `lucos-issue-manager` agent.
+Issue metadata for the lucos workflow is managed via custom fields on the [**lucOS Issue Prioritisation** project board](https://github.com/users/lucas42/projects/8), not via GitHub labels. The project board is the source of truth for workflow state, ownership, and prioritisation across all lucos repositories.
 
-For how these labels work together in the issue lifecycle, see [issue-workflow.md](issue-workflow.md).
+The migration from per-repo workflow labels to central project fields was completed in May 2026 — see [lucas42/lucos_claude_config#73](https://github.com/lucas42/lucos_claude_config/issues/73) for the rationale and rollout. Only the `audit-finding` label was retained (see bottom of this page).
 
-## Workflow labels
+For how these fields work together in the issue lifecycle, see [issue-workflow.md](issue-workflow.md).
 
-| Label | Colour | Purpose |
-|---|---|---|
-| `agent-approved` | Green (`#0e8a16`) | Issue is clear, well-defined, and ready for implementation. |
-| `needs-refining` | Orange (`#d93f0b`) | Issue needs more work before it can be picked up. |
+## Status field
 
-## Automated labels
+Tracks where an issue sits in its lifecycle.
 
-| Label | Colour | Purpose |
-|---|---|---|
-| `audit-finding` | Grey (`#ededed`) | Applied automatically by the `lucos_repos` audit tool to issues it creates. Indicates the issue tracks a failing repository convention. See [ADR-0002](https://github.com/lucas42/lucos_repos/blob/main/docs/adr/0002-audit-issue-lifecycle.md) for the lifecycle. |
+| Option | Meaning |
+|---|---|
+| Needs Triage | Default for newly added items. Set automatically when an issue lands on the board. Must be empty at the end of every triage pass. |
+| Ideation | Goal or scope is vague/exploratory. Park until revisited. |
+| Awaiting Decision | Options have been laid out. Waiting for lucas42 to make a call. |
+| Ready | Well-defined, prioritised, and ready for implementation pickup. Also where issues sit while being worked on. |
+| Blocked | Well-defined but waiting on another issue. Not available for pickup until the blocker closes. |
+| Done | Issue closed. Set automatically by the project board on close. |
 
-## Status labels
+## Priority field
 
-### Refinement statuses (used with `needs-refining`)
+Set on **every triaged issue**, not just Ready ones — refinement work also needs prioritising so lucas42 and agents can see which questions are most urgent.
 
-| Label | Colour | Meaning |
-|---|---|---|
-| `status:ideation` | Light blue (`#c5def5`) | Goal or scope is still vague/exploratory. Park until revisited. |
-| `status:needs-design` | Yellow (`#fbca04`) | Goal is clear, but implementation details need fleshing out by an agent. |
-| `status:awaiting-decision` | Red (`#b60205`) | Options are laid out. Waiting for lucas42 to make a call. |
+| Option | Meaning |
+|---|---|
+| Critical | Full service outage — production is down and users are affected right now. Not for important features or bugs with workarounds. |
+| High | High impact; should be picked up soon. |
+| Medium | Standard priority; normal queue order. |
+| Low | Nice to have; pick up when queue is clear. |
 
-### Implementation statuses (used with `agent-approved`)
+No Priority set = not yet prioritised (distinct from Medium). For strategic guidance on which areas of work map to which priority, see [priorities.md](priorities.md).
 
-| Label | Colour | Meaning |
-|---|---|---|
-| `status:blocked` | Blue (`#1d76db`) | Well-defined but blocked by another issue. Not available for pickup. |
+## Owner field
 
-## Owner labels
+Indicates who should look at the issue next — used both for refinement routing and for implementation assignment.
 
-Indicate who should look at the issue next. Used with both `needs-refining` (review/design) and `agent-approved` (implementation).
+| Option | Assigned to |
+|---|---|
+| lucas42 | Repo owner — product direction, priority calls, decisions only he can make. |
+| lucos-architect | Architectural design / review, or ADR / documentation implementation. |
+| lucos-system-administrator | Infrastructure and ops. |
+| lucos-site-reliability | SRE — monitoring, alerting, reliability, performance, incident management. |
+| lucos-security | Cybersecurity. |
+| lucos-developer | Implementation — the default for hands-on coding work. |
+| lucos-ux | User experience, accessibility, frontend design, copywriting. |
+| lucos-code-reviewer | Code review. |
+| lucos-issue-manager | Workflow, process documentation, and issue conventions. |
 
-| Label | Colour | Assigned to |
-|---|---|---|
-| `owner:lucas42` | Light olive (`#e4e669`) | Repo owner -- product direction, priority calls, questions only he can answer. |
-| `owner:lucos-architect` | Light purple (`#d4c5f9`) | Architectural design/review, or ADR/documentation implementation. |
-| `owner:lucos-system-administrator` | Light teal (`#bfdadc`) | Infrastructure/ops. |
-| `owner:lucos-site-reliability` | Cream (`#fef2c0`) | SRE -- monitoring, alerting, reliability, performance, incident management. |
-| `owner:lucos-security` | Light pink (`#f9d0c4`) | Cybersecurity. |
-| `owner:lucos-developer` | Light green (`#c2e0c6`) | Implementation -- the default for hands-on coding work. |
-| `owner:lucos-code-reviewer` | | Code review. |
-| `owner:lucos-issue-manager` | | Workflow, process documentation, or issue conventions -- the issue manager's review domain. |
+## The one remaining label: `audit-finding`
 
-## Priority labels
+`audit-finding` is the only workflow-relevant label that still exists. It is applied automatically by the `lucos_repos` audit tool to issues it creates, and indicates the issue tracks a failing repository convention. See [ADR-0002](https://github.com/lucas42/lucos_repos/blob/main/docs/adr/0002-audit-issue-lifecycle.md) for the lifecycle.
 
-| Label | Colour | Meaning |
-|---|---|---|
-| `priority:critical` | Dark red (`#e11d48`) | Full service outage -- production is down and users are affected right now. Not for important features or bugs with workarounds. |
-| `priority:high` | Red (`#b60205`) | High impact; should be picked up soon. |
-| `priority:medium` | Yellow (`#fbca04`) | Standard priority; normal queue order. |
-| `priority:low` | Light blue (`#c5def5`) | Nice to have; pick up when queue is clear. |
-
-No priority label = not yet prioritised (distinct from `priority:medium`).
-
-## Repositories
-
-These labels exist in the following repositories:
-
-- lucos
-- lucos_agent
-- lucos_agent_coding_sandbox
-- lucos_backups
-- lucos_claude_config
-- lucos_configy
-- lucos_contacts
-- lucos_deploy_orb
-- lucos_eolas
-- lucos_media_manager
-- lucos_media_metadata_manager
-- lucos_media_seinn
-- lucos_media_weightings
-- lucos_monitoring
-- lucos_photos
+It stayed as a label (rather than becoming a project field) because it represents an intrinsic attribute of the issue itself — a failing repo convention — rather than the team's workflow state on top of the issue. That makes it a different shape of metadata, and the project-field model isn't the right home for it.
