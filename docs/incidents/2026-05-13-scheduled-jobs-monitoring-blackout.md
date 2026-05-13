@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-05-13 |
-| **Duration** | ~7 hours so far (15:40 UTC start; recovery TBD pending production cred + PR #233 merge) |
+| **Duration** | ~7h 20m (2026-05-13 15:40 UTC start → 23:00 UTC recovery) |
 | **Severity** | Partial degradation — monitoring blind to every scheduled-job failure across the estate |
 | **Services affected** | `lucos_monitoring` (data path); every system with a scheduled-job check (detection path) |
 | **Detected by** | User report from lucas42 |
@@ -16,7 +16,7 @@ Source issue: [`lucas42/lucos_monitoring#234`](https://github.com/lucas42/lucos_
 
 Today's roll-out of [ADR-0004](https://github.com/lucas42/lucos/blob/main/docs/adr/0004-scheduled-jobs-monitoring-architecture.md) relocated scheduled-job checks from `lucos_schedule_tracker`'s `/_info` payload onto a new `GET /jobs` endpoint, polled by a new monitoring fetcher (`fetcher_scheduled_jobs`) which attributes each check to its owning system. The flag-day cutover ([`lucas42/lucos_schedule_tracker#83`](https://github.com/lucas42/lucos_schedule_tracker/pull/83)) shipped at the same time as the new fetcher ([`lucas42/lucos_monitoring#231`](https://github.com/lucas42/lucos_monitoring/pull/231)) — but the new fetcher's required environment variable `SCHEDULE_TRACKER_ENDPOINT` was never added to monitoring's `docker-compose.yml` `environment:` whitelist, nor to lucos_creds. Inside the running container the variable was the empty string, so the fetcher's HTTP request had no scheme; `httpc:request` rejected it with `{no_scheme}` once per minute, and every scheduled-job check vanished from monitoring at the moment of the cutover. Loganne event recording remained healthy; only monitoring-side detection was offline.
 
-Resolution is [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_monitoring/pull/233) (adds the variable to the compose passthrough *and* drops the `++ "/jobs"` path-append in the fetcher so the env var is used verbatim, matching the lucos `_ENDPOINT`/`_ORIGIN` convention) plus a matching `SCHEDULE_TRACKER_ENDPOINT=https://schedule-tracker.l42.eu/jobs` write to `lucos_monitoring/production/.env` in lucos_creds (lucas42-only, as agents are read-only on creds). Recovery verification TBD pending both landing and the next monitoring deploy.
+Resolution shipped as [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_monitoring/pull/233) (adds the variable to the compose passthrough *and* drops the `++ "/jobs"` path-append in the fetcher so the env var is used verbatim, matching the lucos `_ENDPOINT`/`_ORIGIN` convention) plus a matching `SCHEDULE_TRACKER_ENDPOINT=https://schedule-tracker.l42.eu/jobs` write to `lucos_monitoring/production/.env` in lucos_creds (lucas42-only, as agents are read-only on creds). PR #233 merged at 22:57 UTC; `lucos_monitoring v1.0.46` deployed to avalon at 23:00 UTC; verification at ~23:05 UTC confirmed 37 `scheduled-job` checks back on `/api/status` (matching the 37 v1-shaped rows currently emitted by `/jobs`) and no further `{no_scheme}` warnings in container logs.
 
 ---
 
@@ -33,10 +33,10 @@ Resolution is [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_
 | 22:03–22:12 | Investigation: confirmed `/jobs` serves 200 with 37 v1-shaped rows; confirmed `monitoring/_info` is post-deploy; cross-checked fetcher source and `monitoring_state_server` cast path (both would handle v1 synthetic IDs correctly via `{SystemStr, system}` fallback); confirmed `/api/status` lists 51 systems with **0 `scheduled-job` checks**; `docker exec lucos_monitoring printenv SCHEDULE_TRACKER_ENDPOINT` returns empty; container logs show `{no_scheme}` every minute |
 | 22:13 | [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_monitoring/pull/233) opened with the one-line compose fix |
 | 22:21 | [`lucas42/lucos_monitoring#234`](https://github.com/lucas42/lucos_monitoring/issues/234) filed as the incident tracker; PR #233 updated with `Closes #234` |
-| TBD | Production cred `SCHEDULE_TRACKER_ENDPOINT=https://schedule-tracker.l42.eu/jobs` added to `lucos_monitoring/production/.env` in lucos_creds — **TBD pending lucas42** |
-| TBD | PR #233 reviewed and merged — **TBD** |
-| TBD | `lucos_monitoring` redeploys; fetcher_scheduled_jobs receives the env var and starts casting scheduled-job checks — **TBD pending deploy** |
-| TBD | Verification: `/api/status` contains `scheduled-job` checks; `{no_scheme}` warnings stop — **TBD pending verification** |
+| ~22:56 | Production cred `SCHEDULE_TRACKER_ENDPOINT=https://schedule-tracker.l42.eu/jobs` written to `lucos_monitoring/production/.env` in lucos_creds (lucas42, in parallel with PR #233 merge) |
+| 22:57:19 | [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_monitoring/pull/233) approved by lucas42 and merged (merge commit `aaa2a8d`) |
+| 23:00:26 | `lucos_monitoring v1.0.46` deployed to avalon (Loganne `deploySystem` event). `fetcher_scheduled_jobs` next poll succeeds: 37 v1-shaped rows fetched from `/jobs`, each cast as a `scheduled-job` check on its owning-system stub |
+| ~23:05 | Verification: `https://monitoring.l42.eu/api/status` returns 82 healthy systems including 37 `scheduled-job` checks (was 51 systems / 0 scheduled-job checks pre-fix); `docker logs lucos_monitoring --since=5m` returns zero `{no_scheme}` warnings (was 1/min for the prior ~7h). **Recovery confirmed.** |
 
 ---
 
