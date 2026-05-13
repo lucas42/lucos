@@ -2,7 +2,7 @@
 
 A reference for how lucOS systems are actually built and operated. This document describes the conventions, patterns, and standards in use across the ecosystem -- not aspirations, but reality as it stands today.
 
-Last updated: 2026-05-07
+Last updated: 2026-05-13
 
 ---
 
@@ -257,6 +257,37 @@ Every service receives from lucos_creds:
 | `ENVIRONMENT` | `development` or `production` |
 | `PORT` | HTTP port |
 | `APP_ORIGIN` | Public-facing base URL |
+
+### Naming network-resource variables: `*_ENDPOINT` vs `*_ORIGIN`
+
+When introducing a new environment variable that refers to a network resource (another service, an event sink, an API), the suffix must reflect how the value is **consumed in code**:
+
+| Suffix | Value contains | Used in code as |
+|---|---|---|
+| `*_ENDPOINT` | Full URL — origin **plus** path | Used as-is. Code does not append any path. |
+| `*_ORIGIN` | Origin only — scheme + host + optional port, no path | Base URL. Code appends one or more paths. |
+
+#### Examples in use
+
+- `LOGANNE_ENDPOINT="http://172.17.0.1:8019/events"` — full URL with `/events` path baked in; consumers POST to this URL directly. **Conforms to `_ENDPOINT`.**
+- `APP_ORIGIN="http://localhost:8015"` — base URL with no path; the consuming service builds multiple per-route paths from it. **Conforms to `_ORIGIN`.**
+- `SCHEDULE_TRACKER_ENDPOINT="https://schedule-tracker.l42.eu/jobs"` — full URL including the `/jobs` path; the consumer (lucos_monitoring's `fetcher_scheduled_jobs`) reads from it as-is. **Conforms to `_ENDPOINT`.**
+
+#### Picking the suffix
+
+The decision is driven by code behaviour, not aesthetics:
+
+- If the variable is read in exactly one place and that code does not do any string concatenation on it before calling `GET`/`POST`, the value is the endpoint — name it `*_ENDPOINT`.
+- If the variable is read in multiple places, or the single read site appends a path (`f"{BASE}/foo"`, `urljoin(BASE, "/bar")`, etc.), the value is the origin — name it `*_ORIGIN`.
+- If you find yourself wanting to call it `*_BASE_URL` or `*_HOST_URL`, you almost certainly mean `*_ORIGIN`.
+
+#### Legacy `*_URL`
+
+The older suffix `*_URL` (e.g. `LUCOS_CONTACTS_URL`) predates this convention. It is treated as legacy:
+
+- **Existing `*_URL` variables stay as they are.** No estate-wide rename sweep.
+- **New variables must use `*_ENDPOINT` or `*_ORIGIN`.** Pick one based on the consumption pattern above. Do not introduce new `*_URL` variables.
+- Eventual migration is planned but not scheduled — when a service is being touched for other reasons, it may also rename its `*_URL` to the conforming suffix, but this is optional and never the primary reason for a PR.
 
 ---
 
