@@ -79,9 +79,9 @@ Diagnostic path was clean — no dead ends. Initial hypothesis space (from team-
 | Action | Issue / PR | Status |
 |---|---|---|
 | Apply compose fix and add production cred to restore service | [`lucas42/lucos_monitoring#233`](https://github.com/lucas42/lucos_monitoring/pull/233) | In progress |
-| Convention check: every `os:getenv` (or equivalent) of a non-fallback-defaulted env var must have the variable declared in `docker-compose.yml`'s `environment:` block | TBD — to be filed against `lucos_repos` | Open |
+| Convention check: every `os:getenv` (or equivalent) of a non-fallback-defaulted env var must have the variable declared in `docker-compose.yml`'s `environment:` block | [`lucas42/lucos_repos#387`](https://github.com/lucas42/lucos_repos/issues/387) | Open |
 | `SYSTEM` env var also missing from monitoring's compose passthrough — all three fetchers send empty User-Agent headers (ADR-0001 violation, pre-dates this incident) | [`lucas42/lucos_monitoring#235`](https://github.com/lucas42/lucos_monitoring/issues/235) | Open |
-| Consider whether monitoring should alert on "check disappearance" (a check that existed in the previous poll but is absent now) in addition to healthy→failing transitions | TBD — to be filed against `lucas42/lucos_monitoring` after weighing the false-positive risk during planned migrations | Open |
+| Consider whether monitoring should alert on "check disappearance" (a check that existed in the previous poll but is absent now) in addition to healthy→failing transitions | [`lucas42/lucos_monitoring#236`](https://github.com/lucas42/lucos_monitoring/issues/236) | Open |
 
 ---
 
