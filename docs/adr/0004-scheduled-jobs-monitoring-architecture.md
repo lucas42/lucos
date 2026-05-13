@@ -90,7 +90,10 @@ The redesign moves the grouping question to its right home: it is a monitoring c
 
 Once a scheduled-job check is attributed to its *owning* system, monitoring's existing deploy-window suppression machinery applies to it automatically: when `lucos_arachne` enters a suppression window (because it is being deployed), every check attributed to `lucos_arachne`, including its scheduled-job checks fetched from schedule_tracker, is suppressed for that window without any per-check `dependsOn` declaration.
 
-This means [`lucos_schedule_tracker#73`](https://github.com/lucas42/lucos_schedule_tracker/issues/73) — which proposed adding ~30 hand-maintained `dependsOn` entries to schedule_tracker's `/_info` — should be **closed when this ADR's monitoring-side cutover lands**, not implemented. The deploy-window flap it tried to solve disappears as a side effect of correct attribution.
+This means [`lucos_schedule_tracker#73`](https://github.com/lucas42/lucos_schedule_tracker/issues/73) — which proposed adding ~30 hand-maintained `dependsOn` entries to schedule_tracker's `/_info` — is **superseded in principle by this ADR**: the hand-mapped workaround should not be implemented. However, the flap problem only fully disappears for any given cron caller once that caller has migrated from v1 (where its `system` field is a synthetic concatenation that does not match the owning-system suppression key) to v2 (where the `system` field is the real owning system). For callers still on v1 on flag-day, the flap is still latent — their checks still attribute to the synthetic-ID string, not to a real owning system. So:
+
+- On flag-day (monitoring↔schedule_tracker cutover): mark `lucos_schedule_tracker#73` as **superseded in principle by ADR-0004**; do not implement.
+- Close `lucos_schedule_tracker#73` as **solved** only when the last v1 caller has migrated to v2 (i.e. at the same point v1 can be removed).
 
 The polymorphic `dependsOn:list` work from [`lucos_monitoring#227`](https://github.com/lucas42/lucos_monitoring/issues/227) is still valuable for genuinely cross-cutting checks (the loganne `webhook-error-rate` motivating case), but is **not needed for scheduled-jobs** under this design — each scheduled-job check has exactly one owning system, not a list of them.
 
@@ -119,15 +122,15 @@ Two interfaces, two strategies, per @lucas42's design pointer 4.
 3. On a flag day:
    - lucos_monitoring's configuration is updated so the new fetcher is active.
    - schedule_tracker's `/_info` stops emitting derived scheduled-job checks.
-4. Inside the same flag day, `lucos_schedule_tracker#73` is closed: the deploy-window flap is now solved by correct attribution rather than by hand-mapped `dependsOn`.
+4. Inside the same flag day, `lucos_schedule_tracker#73` is marked as **superseded in principle by ADR-0004** (the hand-mapped `dependsOn` workaround is not implemented). It is closed as "solved" later — see the schedule_tracker↔all-systems migration below.
 
 **schedule_tracker ↔ all systems (v1/v2 parallel-run, ~20 cron callers).** Order:
 
 1. schedule_tracker ships `POST /v2/report-status` accepting `{system, job_name, frequency, status, message?}`. `/report-status` (v1) continues to accept its existing body shape unchanged.
 2. The DB schema gains a nullable `job_name` column. The primary key becomes `(system, COALESCE(job_name, ''))` so v1 calls (which omit `job_name`) continue to address the same row as before.
 3. lucos_schedule_tracker_pythonclient gains a new function that uses `/v2`. The existing function stays callable and stays pointed at `/v1`.
-4. Cron callers migrate piecemeal whenever they're next touched. Each migration is a one-line change. **Per-cron migration tickets are not raised now** — per @lucas42's procedural note in #140, they create board clutter while blocked. They are raised one-at-a-time as cron systems are touched after v2 is dual-running in production.
-5. Once telemetry shows zero v1 callers remaining, v1 is removed in a subsequent change (separate ADR or close-out comment on the v2 implementation ticket).
+4. Cron callers migrate piecemeal whenever they're next touched. Each migration is a one-line change in the cron's call site, **plus** a clean-up step: every per-cron migration PR must also issue `DELETE /schedule/{old_synthetic_id}` against schedule_tracker to remove the orphaned v1 row. This step is non-optional. Without it, the v1 row's `last_success` will go stale, the time threshold will expire, and `fetcher_scheduled_jobs` will emit a missed-heartbeat alert attributed to the synthetic-ID string *as if it were an owning system* — producing a visible "system" in monitoring that does not exist anywhere else in the estate. **Per-cron migration tickets are not raised now** — per @lucas42's procedural note in #140, they create board clutter while blocked. They are raised one-at-a-time as cron systems are touched after v2 is dual-running in production.
+5. Once telemetry shows zero v1 callers remaining, v1 is removed in a subsequent change (separate ADR or close-out comment on the v2 implementation ticket). At this point `lucos_schedule_tracker#73` is closed as "solved" — the flap it described is structurally impossible once no synthetic-ID rows remain.
 
 The two interface migrations are sequenced **independently**. The monitoring↔schedule_tracker side can land before any cron caller migrates to v2 — schedule_tracker's `GET /jobs` reads existing v1-shaped rows fine (it just reports `job_name: null` for those entries; the monitoring fetcher uses `scheduled-job` as the check key for them).
 
@@ -136,7 +139,7 @@ The two interface migrations are sequenced **independently**. The monitoring↔s
 ### Positive
 
 - **Correct attribution in monitoring.** Scheduled-job checks appear under their owning system row, which is where users go looking for them.
-- **Deploy-window flaps disappear by construction.** No hand-maintained `dependsOn` map; the existing suppression machinery handles it because the check is attributed to the right system. `lucos_schedule_tracker#73` becomes "close on landing".
+- **Deploy-window flaps disappear by construction *for v2-migrated callers*.** No hand-maintained `dependsOn` map; the existing suppression machinery handles it because the check is attributed to the right system. The flap latency for un-migrated v1 callers is unchanged — they keep flapping on their owning system's deploy windows until they migrate.
 - **Overloaded `system` field is fixed.** Sub-job names are recoverable from the API contract, not from string-split heuristics over an ambiguous delimiter.
 - **schedule_tracker's `/_info` becomes honest.** It carries only the health of the schedule_tracker service itself, not synthetic checks about other systems.
 - **No new infrastructure cost.** No new container, no new volume, no new backup integration. The fetcher is added to an existing monitoring binary; the v2 API is added to an existing schedule_tracker binary.
@@ -154,6 +157,7 @@ The two interface migrations are sequenced **independently**. The monitoring↔s
 - **A new monitoring fetcher is one more thing to think about.** Mitigated by following the `fetcher_circleci` template closely — same shape, same lifecycle, same attribution mechanism.
 - **The 4-day step-change in the threshold function is not fixed by this ADR.** It is raised as a separate follow-up to avoid widening scope; jobs configured close to the boundary continue to be exposed to it until that follow-up lands.
 - **Synthetic check key for v1-shaped rows.** A v1 caller (`{system}` only, no `job_name`) produces a single check with key `scheduled-job` under that system's row. If a system later starts using v2 with a `job_name`, it will get a second check key for the named job; the v1-derived `scheduled-job` key will linger until that system's last v1 caller migrates (or until the row is explicitly deleted). This is acceptable — it is visible behaviour in monitoring, not hidden state — but worth flagging so it isn't a surprise during the migration.
+- **Per-cron migration carries a non-optional clean-up step.** Each migration PR must also `DELETE /schedule/{old_synthetic_id}` to remove the orphaned v1 row. Forgetting this step leaves a stale row whose threshold-expiry surfaces as a missed-heartbeat alert attributed to the synthetic-ID string as if it were an owning system — a phantom system on the monitoring dashboard. The accepted mitigation is to call this out in every per-cron migration ticket and to leave it noted on the v2 implementation ticket as a migration-checklist item. Forgetting once is recoverable (delete the row manually); the failure mode is loud rather than silent.
 
 ### Follow-up actions
 
@@ -172,4 +176,4 @@ Out of scope of this ADR but flagged for follow-up:
 
 - Smoothing the 4-day step-change in `calculate_time_threshold` to a continuous formula. Separate, smaller change against schedule_tracker.
 - Same architectural pattern (owning-system attribution, possibly via domain-specific fetcher) for `lucos_arachne_ingestor`, `lucos_backups`, and `lucos_media_import`. Each is its own design step.
-- [`lucos_schedule_tracker#73`](https://github.com/lucas42/lucos_schedule_tracker/issues/73) (the hand-mapped `dependsOn` proposal) should be closed when the monitoring-side cutover from this ADR lands. No work needed on #73 itself.
+- [`lucos_schedule_tracker#73`](https://github.com/lucas42/lucos_schedule_tracker/issues/73) (the hand-mapped `dependsOn` proposal): mark as **superseded in principle by ADR-0004** when the monitoring-side cutover lands; close as **solved** when the last v1 caller has migrated. No code work needed on #73 itself.
