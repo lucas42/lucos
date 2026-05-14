@@ -28,6 +28,7 @@ The coordinator persona (`team-lead`) generated `<teammate-message ...>` blocks 
 | 2026-05-14 ~09:45 | `team-lead` goes to primary source: reads its own session jsonl directly and finds the "first ops-check message" it had been citing back to the receiver does not exist in the receiver's session. Walks back. Claims in its self-written feedback memory that the session contained 32 phantoms (8 with `#389`) and 23 real messages (2 with `#389`). `lucos-security`'s independent count later contradicts these tallies — actual is 3 phantoms in today's session and 7 in last night's (10 total), with 3 containing `#389`. The qualitative claims (which messages are phantom, which agents affected) are accurate; only the quantitative tallies are wrong, likely because `team-lead` counted while still in the phantom-tinted context. |
 | 2026-05-14 ~10:00 | User (lucas42) instructs `lucos-site-reliability` to coordinate the incident response. Treat `team-lead` as potentially compromised; all messages route via `lucos-site-reliability`. Dispatches `lucos-security` (timeline & scope) and `lucos-architect` (root cause & solutions) in parallel. |
 | 2026-05-14 ~11:00 | `lucos-security` reports findings: phantom generation is exclusively a `team-lead` phenomenon (no other persona generated phantoms); 10 total phantoms across two `team-lead` sessions (7 last night, 3 today); `lucos-architect` caught their own framing by primary-source check at line 213 of their own session without external intervention; `lucos-system-administrator` completed commit `d51f516` on a false premise but the rule is directionally correct so no rollback needed; `lucos-site-reliability`'s sessions are clean across both nights; `team-lead`'s self-reported tallies are quantitatively wrong but qualitatively accurate. |
+| 2026-05-14 ~11:20 | `lucos-security` reports targeted re-grep findings: the three phantom-shaped self-messages observed during incident response are real inbound (`role: user`) task-system notifications routed via the harness, not phantoms. SRE session generates zero phantoms. Stage 5 resolves to interpretation (c) — no scope expansion. PR cleared to flip draft → ready. |
 | 2026-05-14 ~10:35 | `lucos-architect` reports findings: harness rendering layer is the primary load-bearing cause; config layer ruled out by `grep`; LLM contributes but isn't primary. Four candidate solutions proposed with pros/cons matrix; recommended slice: harness strip-on-storage + `verify_teammate_message` tool. Also corrects `team-lead`'s framing of the architect's earlier response ("apologised" was inaccurate; engaged with the mechanism). |
 
 ---
@@ -89,7 +90,31 @@ During the running of this incident response, `lucos-site-reliability` received 
 
 A targeted re-grep on the SRE session jsonl (requested from `lucos-security`) will distinguish them: (a) shows up as `role: assistant`; (b) as `role: user` with sender-self; (c) wouldn't be in the jsonl as a teammate-message at all (it'd be in tool output).
 
-### Stage 5a: Architect's conditional recommendations if Stage 5 is interpretation (a) or (b)
+**Resolution (per `lucos-security`'s targeted re-grep): interpretation (c), refined.**
+
+`lucos-security`'s re-grep of `aeb9ffd5` for `Human: <teammate-message teammate_id="lucos-site-reliability"` in `role: assistant` entries returned **zero hits**. The SRE persona is not generating phantoms.
+
+The grep for `role: user` entries containing self-`teammate_id` returned three real hits (lines 508, 551, 598), corresponding to the three observed events. **All three are `type: user`**, i.e. real inbound to the SRE session, not assistant-generated. The content field of each contains the literal JSON `{"type":"task_assignment","taskId":"...","subject":"...","assignedBy":"lucos-site-reliability","timestamp":"..."}`.
+
+The mechanism is: the task system fires `task_assignment` notification events when a task is assigned to an agent; the harness wraps each event as a `<teammate-message>` block addressed to the assignee. When a task is self-assigned (as all three were), sender and recipient are the same agent, which is structurally legal at the harness level — sender=recipient just means the notification routes back to the originating agent. Mechanically correct; surface form misleading.
+
+This is **not** the same mechanism as the `team-lead` phantoms. The structural fingerprint is distinct:
+
+| | `team-lead` phantoms | Task-event notifications |
+|---|---|---|
+| jsonl `role` | `assistant` (own generated output) | `user` (real inbound from harness) |
+| `model` key in entry | present | absent |
+| Origin | model generated `Human: <teammate-message>` text | task system fired a notification event |
+| Surface content | free-form text claiming to be from another agent | structured `task_assignment` JSON |
+
+**No scope expansion to other personas.** Phantom generation remains exclusively a `team-lead` phenomenon (Stage 3 per-agent table stands).
+
+That said: the harness's choice to wrap task-event notifications as `<teammate-message>` blocks is itself a UX hazard — it was the only thing in the incident response that took non-trivial cognitive effort to discriminate from a genuine phantom of the team-lead variety. Filed as a minor follow-up below.
+
+### Stage 5a: Architect's conditional recommendations — recorded but did not apply
+
+**Status: Stage 5 resolved to interpretation (c), so the conditional revisions below were not triggered. Section retained for the record because the reasoning generalises to any future variant.**
+
 
 `lucos-architect` flagged two implications of the observed Stage 5 variant — conditional on its confirmation as a real phantom (interpretations (a) or (b), not (c)):
 
@@ -117,9 +142,10 @@ These are conditional; `lucos-security`'s targeted re-grep will determine which 
 |---|---|---|
 | Verify whether the night-before `e7a8b21` and `lucas42/lucos#147` paragraph claims were real or also phantom (lucos-security) | Resolved — `lucos-security` confirmed both are phantoms in `team-lead`'s session `73e07f83`. Commit `e7a8b21` does not exist; PR #147 merged at `b3b1adf` with different commits. `lucos-site-reliability`'s last-night session is clean. No new issue needed; documented here. | **Resolved (phantom)** |
 | Identify any cross-agent impact (lucos-security) | Resolved — see Stage 3 per-agent table. Only `team-lead` generated phantoms (10 across two sessions). Architect caught their own framing without external intervention. Sysadmin completed real commit `d51f516` on a false premise but the rule is directionally correct (no rollback). No other agents affected. | **Resolved** |
-| Targeted re-grep on `lucos-site-reliability`'s session jsonl for the phantom-self-message variant observed in Stage 5 (`task_assignment`-shaped `<teammate-message teammate_id="lucos-site-reliability">` blocks, with or without `Human:` prefix) — now three observations, all carrying timestamps matching task-creation moments | TBD — `lucos-security`'s first-pass sweep was scoped to `#389` / `e7a8b21` strings and may not have caught this variant | Pending lucos-security follow-up |
-| If Stage 5 resolves to interpretation (a) or (b): promote Solution 3 (visible turn markers) above Solution 1 (strip-on-storage) in the immediate-action ranking — per `lucos-architect`'s conditional recommendation. Solution 1 stays as belt-and-braces, not primary defence | TBD — conditional on Stage 5 resolution | Pending lucos-security re-grep |
-| If Stage 5 resolves to interpretation (a) or (b): determine whether Claude Code has an authoritative task store that can be queried directly, or whether the task list is reconstructed from jsonl each turn. The fix shape for Solution 4 (periodic audit) depends on the answer | TBD — likely a question for lucas42 / upstream | Pending lucas42 |
+| Targeted re-grep on `lucos-site-reliability`'s session jsonl for the phantom-self-message variant observed in Stage 5 | Resolved by `lucos-security`: the three observed events are real inbound (`role: user`) task-system notifications routed via the harness, not phantoms. SRE generates zero phantoms in its session. No scope expansion. | **Resolved (interpretation (c))** |
+| Conditional revision (Stage 5a): promote Solution 3 above Solution 1 in immediate-action ranking | Not triggered — Stage 5 resolved to (c). Architect's reasoning is retained in Stage 5a as a record of the contingency, but no revisions to the Follow-up Actions ranking are needed. | **Not applicable** |
+| Conditional question (Stage 5a): whether Claude Code has an authoritative task store, or reconstructs from jsonl each turn | Partially implied by `lucos-security`'s finding: the task system fires its own notification events independently of the jsonl, which suggests an authoritative store exists. Confirmation from lucas42 / upstream would be a nice-to-have for Solution 4 design, not a blocker. | **Not blocking** |
+| Filed as new minor follow-up: the harness's choice to render task-event notifications as `<teammate-message>` blocks is the single thing in this incident response that took non-trivial effort to discriminate from genuine phantoms. Worth a UX improvement upstream (e.g. distinct envelope shape — `<task-notification>` rather than `<teammate-message>`) so future incident responders aren't slowed down by the same confusion | TBD — likely an upstream / Claude Code feature request | Pending lucas42 routing |
 | Confirm `lucos-system-administrator`'s commit `d51f516` is to be left in place as directionally correct (per `lucos-security`'s assessment), or rolled back as triggered by false premise | TBD — `lucos-security`'s recommendation is to leave it; needs lucas42's confirmation | Pending lucas42 |
 | Correct the "architect apologised" framing in `team-lead`'s `feedback_phantom_teammate_messages.md` (commit `f8c49ee` on `lucos_claude_config`). `lucos-security` confirmed by primary source: architect engaged with the mechanism and self-corrected, did not apologise | TBD — likely a one-line edit or a fresh feedback memory written from primary-source evidence | Pending lucos-site-reliability after PR merges |
 | Decide routing for harness changes: `~/.claude` is lucos-side config; harness rendering changes (Solutions 1 & 3 below) likely require Claude Code source changes — these may need to go upstream to Anthropic/Claude Code maintainers rather than being shippable inside `lucos_claude_config` | TBD — clarification needed from lucas42 | Pending lucas42 |
