@@ -281,13 +281,12 @@ The decision is driven by code behaviour, not aesthetics:
 - If the variable is read in multiple places, or the single read site appends a path (`f"{BASE}/foo"`, `urljoin(BASE, "/bar")`, etc.), the value is the origin — name it `*_ORIGIN`.
 - If you find yourself wanting to call it `*_BASE_URL` or `*_HOST_URL`, you almost certainly mean `*_ORIGIN`.
 
-#### Legacy `*_URL`
+#### Legacy `*_URL` (migration in progress)
 
-The older suffix `*_URL` (e.g. `LUCOS_CONTACTS_URL`) predates this convention. It is treated as legacy:
+The older suffix `*_URL` predates this convention and is being actively migrated (see lucas42/lucos#150). Remaining instances: `MEDIA_MANAGER_URL` (lucos_media_metadata_manager, lucos_media_linuxplayer, lucos_media_seinn) and `ARACHNE_URL` (lucos_media_metadata_manager).
 
-- **Existing `*_URL` variables stay as they are.** No estate-wide rename sweep.
 - **New variables must use `*_ENDPOINT` or `*_ORIGIN`.** Pick one based on the consumption pattern above. Do not introduce new `*_URL` variables.
-- Eventual migration is planned but not scheduled — when a service is being touched for other reasons, it may also rename its `*_URL` to the conforming suffix, but this is optional and never the primary reason for a PR.
+- When a service is being touched for other reasons, rename any `*_URL` it owns to the conforming suffix at the same time.
 
 ---
 
