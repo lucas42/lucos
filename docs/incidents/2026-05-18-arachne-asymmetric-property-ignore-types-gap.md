@@ -67,7 +67,9 @@ Nothing this time — root cause was clear from the monitoring debug field (whic
 | Action | Issue / PR | Status |
 |---|---|---|
 | Add `owl:AsymmetricProperty` to `IGNORE_TYPES` (hotfix) | lucas42/lucos_arachne#543 | Done (merged & deployed 2026-05-18 12:27Z) |
-| Replace denylist with namespace-based meta-type filter; cover OWL/RDFS properties and classes; add direct test coverage for the meta-type-only skip path | lucas42/lucos_arachne#544 | Open |
+| Replace denylist with namespace-based meta-type filter; cover OWL/RDFS properties and classes; add direct test coverage for the meta-type-only skip path. Also amend `lucos_arachne/CLAUDE.md`'s convention text to clarify the domain-vs-meta distinction. | lucas42/lucos_arachne#544 | Open |
+| Surface per-source ingest freshness in the arachne search UI so future staleness has user-visible signal (filed by UX, identified during the incident as a latent UX gap that prolonged user-facing impact) | lucas42/lucos_arachne#547 | Open |
+| Add a "Downstream consumers" section to `lucos_eolas/CLAUDE.md` warning ontology authors about non-obvious effects on arachne, with concrete known interactions and a reciprocal pointer in `lucos_arachne/CLAUDE.md` | lucas42/lucos_eolas#261 | Open |
 
 ---
 
