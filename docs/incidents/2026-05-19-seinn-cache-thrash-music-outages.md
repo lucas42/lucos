@@ -130,10 +130,13 @@ This is a recurring multi-day pattern, consistent with the seinn cache-thrash me
 |---|---|---|
 | Fix race condition in `updateLRUTimestamp` (root cause) | [`lucas42/lucos_media_seinn#456`](https://github.com/lucas42/lucos_media_seinn/issues/456) | Open |
 | Detect and recover from cache-thrash state in the UI (defence-in-depth) | [`lucas42/lucos_media_seinn#457`](https://github.com/lucas42/lucos_media_seinn/issues/457) | Open |
+| Include `error.cause.code` in loganne's webhook-failure log line and persisted `errorMessage` (so future `fetch failed` bursts identify the actual underlying error code — `ECONNREFUSED`, `ENOTFOUND`, `UND_ERR_SOCKET`, etc. — rather than collapsing them all to "fetch failed") | [`lucas42/lucos_loganne#474`](https://github.com/lucas42/lucos_loganne/issues/474) | Open |
 | Enrich playback-error context sent from seinn to media-manager (already in flight, would have shortened diagnosis time) | [`lucas42/lucos_media_seinn#453`](https://github.com/lucas42/lucos_media_seinn/issues/453) | Open (pre-existing) |
 | Send structured JSON error envelope from seinn to media-manager (receiver side already shipped) | [`lucas42/lucos_media_seinn#454`](https://github.com/lucas42/lucos_media_seinn/issues/454) | Open (pre-existing) |
 
 The two pre-existing tickets (`#453`, `#454`) were filed before this incident; their existence is noted here because, had they been shipped, the diagnostic loop would have been much faster — seinn would have told media-manager *why* each track was erroring (cache miss / cache.put failure) rather than just *that* it errored.
+
+The loganne ticket (`#474`) was raised after the report was first published, in response to a question on review: today's diagnosis required ruling out `lucos_router` via nginx access logs, an indirect route to a conclusion that a single extra log field would have given immediately. Filed as a direct follow-up rather than a separate item because the diagnostic gap was specifically surfaced by this incident.
 
 ---
 
