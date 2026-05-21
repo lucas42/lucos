@@ -28,20 +28,22 @@ Configy is the single source of truth that drives routing, monitoring, DNS, and 
 
 These systems derive their state from configy. After configy is updated:
 
-- [ ] **Routing (lucos_router):** The router's daily cron job (22:16 UTC) regenerates nginx configs from configy and removes stale domain configs. To propagate immediately, SSH to the router host and run `update-domains.sh`, or redeploy the router.
+- [ ] **Routing (lucos_router):** The router's daily cron job (22:16 UTC) regenerates nginx configs from configy and removes stale domain configs. To propagate immediately, run `docker exec lucos_router update-domains.sh` on the router host (the script lives inside the container, not on the host filesystem), or redeploy the router.
 - [ ] **DNS (lucos_dns):** Zone files are auto-generated from configy. Redeploy lucos_dns to regenerate, or wait for its next scheduled regeneration.
 - [ ] **Monitoring (lucos_monitoring):** Service discovery happens at build time. Redeploy monitoring so it stops polling the retired service. Until redeployed, monitoring will alert on the now-unreachable service — if the teardown will take time, use the `PUT /suppress/{system}` endpoint to suppress alerts during the transition.
 - [ ] **TLS certificates:** The router manages Let's Encrypt certs per domain. Removing the domain from routing means the cert will simply not be renewed and will expire naturally. No manual cleanup needed.
 
 ### 2c. Stop the service
 
-- [ ] **Stop and remove containers** on the deployment host(s): `docker compose down` in the service's directory.
-- [ ] **Remove Docker volumes** if the data is no longer needed. If the data might be needed for reference, take a final backup first. Remember: `docker compose down -v` removes volumes, but a plain `docker compose down` does not.
-- [ ] **Remove the service directory** from the deployment host if it was cloned there.
+Note: there are no persistent service directories on production hosts (compose files are deployed transiently during CI and are not present afterwards). Use `docker stop`/`docker rm`/`docker volume rm` with the container/volume names directly rather than `docker compose down`.
+
+- [ ] **Stop and remove containers** on the deployment host(s): `docker stop <container_names> && docker rm <container_names>`.
+- [ ] **Remove Docker volumes** if the data is no longer needed. If the data might be needed for reference, take a final backup first. Use `docker volume rm <volume_name>` for each volume registered in configy's `volumes.yaml`.
+- [ ] **Remove the service directory** from the deployment host if it was cloned there (rarely present — see note above).
 
 ### 2d. Clean up credentials
 
-- [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove them.
+- [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove all of them, including `PORT` and `APP_ORIGIN`. The configy sync only writes credentials for systems currently in configy — it has no cleanup logic for removed systems, so orphaned credentials are not auto-deleted. Simple credentials (type `config` or `simple`) are deleted with `ssh -p 2202 creds.l42.eu "{system}/{env}/{key}="` (empty value = delete). Linked credentials (keys beginning `KEY_`) need the `rm` form: `ssh -p 2202 creds.l42.eu "rm {client}/{env} => {server}/{env}"`.
 - [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically.
 
 ### 2e. Clean up arachne knowledge graph
