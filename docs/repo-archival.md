@@ -15,7 +15,26 @@ Before starting teardown, understand what you're removing and who might be affec
 
 *Skip this phase entirely if the repo is not a deployed service (i.e. has no entry in configy's `systems.yaml`).*
 
-### 2a. Remove from configy
+### 2a. Suppress monitoring alerts
+
+Monitoring rebuilds its polling list at deploy time, not from a live configy fetch — so it keeps polling the retired service through the configy-removal → monitoring-redeploy gap. The gap is structurally present in every decom, regardless of teardown speed. Suppress alerts up front to avoid spurious `monitoringAlert` events during the gap.
+
+- [ ] **Call `PUT https://monitoring.l42.eu/suppress/{system}`** with the Bearer token in `lucos_agent/development/KEY_LUCOS_MONITORING`:
+
+  ```bash
+  scp -P 2202 "creds.l42.eu:lucos_agent/development/.env" ~/sandboxes/lucos_agent/.env
+  . ~/sandboxes/lucos_agent/.env
+  curl -X PUT -H "Authorization: Bearer ${KEY_LUCOS_MONITORING}" \
+    "https://monitoring.l42.eu/suppress/{system}"
+  ```
+
+  Expected response: `204 No Content`. A `404` means the system isn't in monitoring's polling list (e.g. it's been removed already) — harmless, proceed.
+
+  No lift step needed. Monitoring's in-memory suppression state is wiped at its next deploy (Phase 2c), and the retired system is no longer in the polling list afterwards, so the suppress entry becomes moot.
+
+  **Suppression has a 10-minute TTL** (hardcoded in `lucos_monitoring/src/monitoring_state_server.erl`, originally sized for deploy windows). If Phase 2c is likely to take longer than 10 minutes — e.g. you need to merge and deploy a configy PR before you can redeploy monitoring — re-run the `PUT` to reset the timer. There's no harm in re-running pre-emptively.
+
+### 2b. Remove from configy
 
 Configy is the single source of truth that drives routing, monitoring, DNS, and backup discovery. Update it first so downstream systems stop expecting the service to exist.
 
@@ -24,16 +43,16 @@ Configy is the single source of truth that drives routing, monitoring, DNS, and 
 - [ ] **Remove from `scripts.yaml`** or `components.yaml` if listed there.
 - [ ] **Commit, push, and deploy configy.** The configy API must be live with the updated config before proceeding.
 
-### 2b. Propagate to downstream systems
+### 2c. Propagate to downstream systems
 
 These systems derive their state from configy. After configy is updated:
 
 - [ ] **Routing (lucos_router):** The router's daily cron job (22:16 UTC) regenerates nginx configs from configy and removes stale domain configs. To propagate immediately, run `docker exec lucos_router update-domains.sh` on the router host (the script lives inside the container, not on the host filesystem), or redeploy the router.
 - [ ] **DNS (lucos_dns):** Zone files are auto-generated from configy. Redeploy lucos_dns to regenerate, or wait for its next scheduled regeneration.
-- [ ] **Monitoring (lucos_monitoring):** Service discovery happens at build time. Redeploy monitoring so it stops polling the retired service. Until redeployed, monitoring will alert on the now-unreachable service — if the teardown will take time, use the `PUT /suppress/{system}` endpoint to suppress alerts during the transition.
+- [ ] **Monitoring (lucos_monitoring):** Service discovery happens at build time. Redeploy monitoring so it stops polling the retired service. Alert suppression for the redeploy gap is already handled by Phase 2a.
 - [ ] **TLS certificates:** The router manages Let's Encrypt certs per domain. Removing the domain from routing means the cert will simply not be renewed and will expire naturally. No manual cleanup needed.
 
-### 2c. Stop the service
+### 2d. Stop the service
 
 Note: there are no persistent service directories on production hosts (compose files are deployed transiently during CI and are not present afterwards). Use `docker stop`/`docker rm`/`docker volume rm` with the container/volume names directly rather than `docker compose down`.
 
@@ -41,12 +60,12 @@ Note: there are no persistent service directories on production hosts (compose f
 - [ ] **Remove Docker volumes** if the data is no longer needed. If the data might be needed for reference, take a final backup first. Use `docker volume rm <volume_name>` for each volume registered in configy's `volumes.yaml`.
 - [ ] **Remove the service directory** from the deployment host if it was cloned there (rarely present — see note above).
 
-### 2d. Clean up credentials
+### 2e. Clean up credentials
 
 - [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove all of them, including `PORT` and `APP_ORIGIN`. The configy sync only writes credentials for systems currently in configy — it has no cleanup logic for removed systems, so orphaned credentials are not auto-deleted. Simple credentials (type `config` or `simple`) are deleted with `ssh -p 2202 creds.l42.eu "{system}/{env}/{key}="` (empty value = delete). Linked credentials (keys beginning `KEY_`) need the `rm` form: `ssh -p 2202 creds.l42.eu "rm {client}/{env} => {server}/{env}"`.
 - [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically.
 
-### 2e. Clean up arachne knowledge graph
+### 2f. Clean up arachne knowledge graph
 
 *Only if the service is listed in `live_systems` in `lucos_arachne/ingestor/triplestore.py` (currently: lucos_eolas, lucos_contacts, lucos_media_metadata_api).*
 
@@ -83,6 +102,6 @@ After archiving, confirm the estate is clean:
 ## Notes
 
 - **Ordering matters.** Remove from configy before stopping the service. This ensures monitoring and routing stop expecting the service before it disappears, minimising false alerts.
-- **Monitoring is the most latency-sensitive system.** It discovers services at build time, so it will keep polling a dead service until redeployed. Plan for this — either redeploy monitoring early, or suppress alerts.
+- **Monitoring is the most latency-sensitive system.** It discovers services at build time, so it will keep polling a dead service until redeployed. Phase 2a handles this by suppressing alerts up front.
 - **Data retention.** If the service stored user data or data that took significant effort to create (check `recreate_effort` in configy's `volumes.yaml`), take a final backup before removing volumes. Err on the side of keeping backups — storage is cheap, regret is expensive.
 - **Partial archival.** If a service is being replaced rather than retired, the successor service should be deployed and verified before the old one is torn down. Run both in parallel during the transition.
