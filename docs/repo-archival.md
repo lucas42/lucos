@@ -43,8 +43,8 @@ Note: there are no persistent service directories on production hosts (compose f
 
 ### 2d. Clean up credentials
 
-- [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove them. Note: `PORT` and `APP_ORIGIN` are managed by the configy sync process — they will be cleaned up automatically the next time the configy sync runs after Phase 2a's deployment lands. Only standalone credentials (e.g. `ARACHNE_ENDPOINT`, `LOGANNE_ENDPOINT`) and linked credentials (keys beginning `KEY_`) need manual removal.
-- [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically: `ssh -p 2202 creds.l42.eu "rm <retired_system>/<env> => <server_system>/<env>"`.
+- [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove all of them, including `PORT` and `APP_ORIGIN`. The configy sync only writes credentials for systems currently in configy — it has no cleanup logic for removed systems, so orphaned credentials are not auto-deleted. Simple credentials (type `config` or `simple`) are deleted with `ssh -p 2202 creds.l42.eu "{system}/{env}/{key}="` (empty value = delete). Linked credentials (keys beginning `KEY_`) need the `rm` form: `ssh -p 2202 creds.l42.eu "rm {client}/{env} => {server}/{env}"`.
+- [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically.
 
 ### 2e. Clean up arachne knowledge graph
 
