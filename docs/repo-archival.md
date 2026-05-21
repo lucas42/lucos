@@ -15,9 +15,18 @@ Before starting teardown, understand what you're removing and who might be affec
 
 *Skip this phase entirely if the repo is not a deployed service (i.e. has no entry in configy's `systems.yaml`).*
 
-### 2a. Suppress monitoring alerts
+### 2a. Remove from configy
 
-Monitoring rebuilds its polling list at deploy time, not from a live configy fetch — so it keeps polling the retired service through the configy-removal → monitoring-redeploy gap. The gap is structurally present in every decom, regardless of teardown speed. Suppress alerts up front to avoid spurious `monitoringAlert` events during the gap.
+Configy is the single source of truth that drives routing, monitoring, DNS, and backup discovery. Update it first so downstream systems stop expecting the service to exist.
+
+- [ ] **Remove from `systems.yaml`.** Delete the service's entry (domain, port, hosts).
+- [ ] **Remove from `volumes.yaml`** if the service has any registered volumes.
+- [ ] **Remove from `scripts.yaml`** or `components.yaml` if listed there.
+- [ ] **Commit, push, and deploy configy.** The configy API must be live with the updated config before proceeding.
+
+### 2b. Suppress monitoring alerts
+
+Once configy has been deployed without the retired service, `lucos_monitoring` will continue polling it until monitoring itself is redeployed in Phase 2c — monitoring rebuilds its polling list at deploy time, not from a live configy fetch. Suppress alerts in this window so the polling gap doesn't fire spurious `monitoringAlert` events.
 
 - [ ] **Call `PUT https://monitoring.l42.eu/suppress/{system}`** with the Bearer token in `lucos_agent/development/KEY_LUCOS_MONITORING`:
 
@@ -32,16 +41,9 @@ Monitoring rebuilds its polling list at deploy time, not from a live configy fet
 
   No lift step needed. Monitoring's in-memory suppression state is wiped at its next deploy (Phase 2c), and the retired system is no longer in the polling list afterwards, so the suppress entry becomes moot.
 
-  **Suppression has a 10-minute TTL** (hardcoded in `lucos_monitoring/src/monitoring_state_server.erl`, originally sized for deploy windows). If Phase 2c is likely to take longer than 10 minutes — e.g. you need to merge and deploy a configy PR before you can redeploy monitoring — re-run the `PUT` to reset the timer. There's no harm in re-running pre-emptively.
+  **Suppression has a 10-minute TTL** (hardcoded in `lucos_monitoring/src/monitoring_state_server.erl`, originally sized for deploy windows). If Phase 2c is likely to take longer than 10 minutes — e.g. monitoring needs a non-trivial code change or its own PR review before redeploy — re-run the `PUT` to reset the timer. There's no harm in re-running pre-emptively.
 
-### 2b. Remove from configy
-
-Configy is the single source of truth that drives routing, monitoring, DNS, and backup discovery. Update it first so downstream systems stop expecting the service to exist.
-
-- [ ] **Remove from `systems.yaml`.** Delete the service's entry (domain, port, hosts).
-- [ ] **Remove from `volumes.yaml`** if the service has any registered volumes.
-- [ ] **Remove from `scripts.yaml`** or `components.yaml` if listed there.
-- [ ] **Commit, push, and deploy configy.** The configy API must be live with the updated config before proceeding.
+  **Race:** between configy's deploy and this suppress call landing, monitoring's next poll cycle may catch a failure and emit a single `monitoringAlert`. In practice this is rare (the gap is seconds if you proceed straight from 2a to 2b) and self-limiting (subsequent polls are suppressed); no mitigation.
 
 ### 2c. Propagate to downstream systems
 
@@ -49,7 +51,7 @@ These systems derive their state from configy. After configy is updated:
 
 - [ ] **Routing (lucos_router):** The router's daily cron job (22:16 UTC) regenerates nginx configs from configy and removes stale domain configs. To propagate immediately, run `docker exec lucos_router update-domains.sh` on the router host (the script lives inside the container, not on the host filesystem), or redeploy the router.
 - [ ] **DNS (lucos_dns):** Zone files are auto-generated from configy. Redeploy lucos_dns to regenerate, or wait for its next scheduled regeneration.
-- [ ] **Monitoring (lucos_monitoring):** Service discovery happens at build time. Redeploy monitoring so it stops polling the retired service. Alert suppression for the redeploy gap is already handled by Phase 2a.
+- [ ] **Monitoring (lucos_monitoring):** Service discovery happens at build time. Redeploy monitoring so it stops polling the retired service. Alert suppression for the redeploy gap is already handled by Phase 2b.
 - [ ] **TLS certificates:** The router manages Let's Encrypt certs per domain. Removing the domain from routing means the cert will simply not be renewed and will expire naturally. No manual cleanup needed.
 
 ### 2d. Stop the service
@@ -102,6 +104,6 @@ After archiving, confirm the estate is clean:
 ## Notes
 
 - **Ordering matters.** Remove from configy before stopping the service. This ensures monitoring and routing stop expecting the service before it disappears, minimising false alerts.
-- **Monitoring is the most latency-sensitive system.** It discovers services at build time, so it will keep polling a dead service until redeployed. Phase 2a handles this by suppressing alerts up front.
+- **Monitoring is the most latency-sensitive system.** It discovers services at build time, so it will keep polling a dead service until redeployed. Phase 2b handles this by suppressing alerts immediately after configy is removed, before downstream propagation starts.
 - **Data retention.** If the service stored user data or data that took significant effort to create (check `recreate_effort` in configy's `volumes.yaml`), take a final backup before removing volumes. Err on the side of keeping backups — storage is cheap, regret is expensive.
 - **Partial archival.** If a service is being replaced rather than retired, the successor service should be deployed and verified before the old one is torn down. Run both in parallel during the transition.
