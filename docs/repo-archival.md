@@ -32,6 +32,8 @@ Monitoring rebuilds its polling list at deploy time, not from a live configy fet
 
   No lift step needed. Monitoring's in-memory suppression state is wiped at its next deploy (Phase 2c), and the retired system is no longer in the polling list afterwards, so the suppress entry becomes moot.
 
+  **Suppression has a 10-minute TTL** (hardcoded in `lucos_monitoring/src/monitoring_state_server.erl`, originally sized for deploy windows). If Phase 2c is likely to take longer than 10 minutes — e.g. you need to merge and deploy a configy PR before you can redeploy monitoring — re-run the `PUT` to reset the timer. There's no harm in re-running pre-emptively.
+
 ### 2b. Remove from configy
 
 Configy is the single source of truth that drives routing, monitoring, DNS, and backup discovery. Update it first so downstream systems stop expecting the service to exist.
