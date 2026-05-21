@@ -101,6 +101,31 @@ After archiving, confirm the estate is clean:
 - [ ] **lucos_repos:** Next audit sweep completes without errors related to the archived repo.
 - [ ] **configy validation tests:** Run configy's test suite to confirm no dangling references.
 
+## Phase 6: Notify the team
+
+Once Phase 5 confirms the estate is clean, broadcast the decommissioning so each teammate can sweep their own persona file, memories, and any docs they own for stale references to the retired system.
+
+**No broadcast mechanism exists.** `SendMessage` has no `to: "*"` or `to: "broadcast"` fan-out — each teammate must be messaged individually. Don't try a wildcard recipient; it'll go to a phantom inbox no-one reads.
+
+- [ ] **Self-scan first.** Before broadcasting, sweep your own persona file (`~/.claude/agents/<your-agent>.md`), your memory directory (`~/.claude/agent-memory/<your-agent>/`), and any workflow / reference / ops-check files you own. Remove stale references to the retired system; update items where the lesson is still valid but the example needs replacing. You're not exempt just because you're driving the decom.
+- [ ] **Send a `SendMessage` to each `lucos-*` teammate** (i.e. each persona file in `~/.claude/agents/lucos-*.md`, excluding your own). At time of writing the list is:
+
+  - `lucos-architect`
+  - `lucos-code-reviewer`
+  - `lucos-developer`
+  - `lucos-security`
+  - `lucos-site-reliability`
+  - `lucos-system-administrator`
+  - `lucos-ux`
+
+  team-lead is implicit (they orchestrated the decom and will sweep their own state as part of that — no need to send them a notification). If new lucos-* personas have been added since this doc was last updated, treat `~/.claude/agents/lucos-*.md` as authoritative over the list above.
+
+  Suggested message template:
+
+  > `lucas42/{repo}` has been decommissioned. Archival issue: `{URL}`. Please scan your persona file, memory directory, and any docs you own for references to `{system}` / `{repo}` — remove stale items, update items where the lesson is still valid but the example needs replacing. No reply needed unless you find something that needs cross-agent coordination.
+
+  No need to wait for acknowledgements — each teammate cleans up asynchronously.
+
 ## Notes
 
 - **Ordering matters.** Remove from configy before stopping the service. This ensures monitoring and routing stop expecting the service before it disappears, minimising false alerts.
