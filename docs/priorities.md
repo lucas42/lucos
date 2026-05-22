@@ -43,7 +43,16 @@ When setting Priority during triage:
 
 If an issue in a paused repository has a genuine critical security concern, it may still warrant Priority = High — use judgement.
 
-Within a priority level, oldest issues are picked up first. Ordering can also be overridden by lucas42 via manual board repositioning, which is authoritative.
+### Ordering within a priority level
+
+Within a given Priority field value (Critical / High / Medium / Low), order issues by:
+
+1. **Strategic tier they fall under.** Issues advancing active priority #1 sit above issues advancing active priority #2, and so on. Issues that do not fall under any active strategic priority sit below issues that do.
+2. **Age, oldest first**, within the same strategic tier.
+
+Strategic-tier ordering only applies *within* a Priority field value — it does not promote a Medium issue above a High one. To promote across Priority levels, change the Priority field. Two issues can therefore be in the same tier but at different Priority levels; the Priority field still wins.
+
+Ordering can be overridden by lucas42 via manual board repositioning, which is authoritative — do not undo a manual reposition just because the strategic-tier sort would have placed it differently.
 
 ### Preventing priority inflation
 
