@@ -24,7 +24,7 @@ This incident has two **chronic** contributors (long-standing bugs that the burs
 
 Follow-up investigation since the initial report (2026-05-22 14:25 UTC) has substantially expanded the picture — in particular, the original report attributed root cause to a cache-eviction `TypeError` in seinn's service worker, but direct SW-console probing falsified that hypothesis. The actual deeper root cause is a separate, chronic LRU-desync race in the same code area. The report has been amended to reflect the current understanding.
 
-Source issues: see Follow-up Actions, below — eight items across four repositories.
+Source issues: see Follow-up Actions, below — nine items across five repositories.
 
 ---
 
@@ -54,7 +54,7 @@ Source issues: see Follow-up Actions, below — eight items across four reposito
 
 ## Analysis
 
-The incident is the result of **four contributing factors interacting**: two chronic (latent until the burst) and two acute (specific to the burst). Each is sufficient on its own to make the picture worse; the combination is what produced the user-visible outage.
+The incident is the result of **multiple contributing factors interacting**: one chronic root cause (latent until the burst surfaced it), one acute trigger (specific to the burst), one structural property of the estate that turned a local failure into a visible one, and one unexplained mechanism that the burst surfaced and still needs investigation. None is sufficient on its own; the combination produced the user-visible outage.
 
 ### Chronic root cause #1 — LRU desync race in seinn's service worker
 
@@ -68,7 +68,7 @@ Every eviction pass that overlaps with a concurrent `updateLRUTimestamp` call qu
 
 This was confirmed directly in production via SW-console probing at ~15:01 and ~15:25 UTC (see Timeline). Filed as [`lucas42/lucos_media_seinn#472`](https://github.com/lucas42/lucos_media_seinn/issues/472) with a unified-lock fix proposal. This finding *supersedes* the original incident's framing of `#469` as root cause — `#469`'s `TypeError` is now understood as an acute layer on top of this chronic substrate.
 
-### Chronic root cause #2 — media-api's fire-and-forget loganne client
+### Structural property — all loganne clients are fire-and-forget
 
 `lucos_media_metadata_api/api/loganne.go` posts events via:
 
@@ -83,11 +83,51 @@ func (loganne Loganne) post(...) {
 }
 ```
 
-5-second timeout, no retry, no queue, no error returned to the caller. When loganne's event loop is saturated (as it was today), media-api hits the timeout, logs a warning, and **silently drops the event**. There is no further mechanism to recover it.
+5-second timeout, no retry, no queue, no error returned to the caller. When loganne can't respond in 5 s, media-api logs a warning and the event is gone — no further mechanism to recover it.
 
-This contrasts with `lucos_loganne_pythonclient`, which has retry semantics. So an estate-wide expectation that "loganne clients should be resilient to transient loganne pressure" exists in the Python ecosystem but not the Go one. Architectural shape of the fix (inline retry in media-metadata-api vs. extracted `lucos_loganne_goclient`) is under consultation with `lucos-architect`; ticket to be filed once shape is decided.
+This was initially framed (in the first draft of this amendment) as a regression specific to the Go client, on the assumption that the Python client had retry semantics. That assumption is wrong. The actual cross-language picture, verified at amendment time:
 
-The 25 events dropped today are the visible signal. Past bursts (see daily recurrence table) presumably dropped events similarly — they just weren't investigated.
+| Client | Timeout | Retry | Behaviour on unreachable loganne |
+|---|---|---|---|
+| `lucos_media_metadata_api` (Go) | 5 s | none | log + drop |
+| `lucos_creds` (Go, `server/src/loganne.go`) | none (uses `http.DefaultClient`) | none | block caller indefinitely |
+| `lucos_loganne_pythonclient` (Python) | none (no `timeout=` on `session.post`) | none | block caller until socket fails |
+| `lucos_monitoring/src/loganne.erl` (Erlang) | none (empty HTTPOptions) | none | block caller indefinitely |
+
+**All four clients are fire-and-forget.** Adding retry to media-api in isolation creates a *new* asymmetry, not a return to an estate-wide norm. The estate-wide norm *is* fire-and-forget; that's the de-facto contract today.
+
+So the 25 silently-dropped events today are a *consequence* of the contract, not a violation of it. Whether the contract is the *right* contract is a separate, longer conversation that depends on findings from the "Unexplained mechanism" subsection immediately below — if loganne is reliable enough that drops are rare under realistic load, fire-and-forget is fine; if not, the contract needs to change.
+
+For separate worth-fixing-now reasons: the `lucos_creds` client uses `http.DefaultClient` and has no timeout at all, meaning a hung loganne would block credential operations. That's a small correctness bug independent of today's cascade story, tracked in its own ticket (see Follow-up Actions).
+
+### Unexplained mechanism — loganne becomes unresponsive despite accept-202-fast
+
+The most subtle finding of the post-merge investigation, and one I missed on the first reading. Loganne's `src/routes/events.js` already does:
+
+```js
+router.post('/', (req, res) => {
+    // ... validate ...
+    res.status(202).setHeader("Content-Type", "text/plain").send("Event being processed\n");
+    events.unshift(event);
+    trimEvents();
+    function stateChange() { /* ... */ }
+    stateChange(event);
+    if (req.app.webhooks) req.app.webhooks.trigger(event, stateChange);
+});
+```
+
+The `res.status(202).send(...)` happens *before* `webhooks.trigger(event, ...)`. The accept path is already decoupled from the fan-out work. So under normal Node.js scheduling, media-api's `POST /events` should receive a 202 in milliseconds — well inside the 5-second client timeout.
+
+But during today's burst the avalon nginx access log records **25 of 76 `POST /events` from media-api returning 499** (Client Closed Request) and **6 of 7 `GET /_info` polls from lucos_monitoring returning 499**. Both of those are loganne failing to send *any* response within the client's timeout — not just slow fan-out, but slow *response to a simple request*.
+
+If the accept path is structurally O(parse + push-to-array + log), and yet it's taking 5+ seconds to send a 202, then something is starving the Node event loop *between the accept handler and the response being written*. Plausible mechanisms (in rough order of suspicion):
+
+1. **Event-loop saturation from undici outbound fetches.** undici uses libuv; many in-flight outbound fetches all settling at once produce a flood of microtasks. If microtask processing dominates the loop, even cheap handlers (the 202 send) starve. This is the most likely culprit given the timing correlation, but it has the awkward implication that the accept-202-fast pattern *doesn't actually decouple* under heavy outbound load — a known weakness of single-threaded async runtimes.
+2. **Express body-parser blocking.** The `router.use(express.json())` middleware at line 38 of `events.js` parses the request body before the handler runs. Large JSON payloads or contention on the parser would delay the 202.
+3. **GC pauses.** A process holding lots of in-flight webhook state, settled promises, and a 90-day event ring could be triggering long pauses. `--trace-gc` would settle it.
+4. **TCP accept-queue saturation at the OS level.** With many concurrent inbound connections all hitting timeouts, the kernel's accept backlog could be filling faster than Node can `accept()` from it.
+
+None of these is confirmed by today's evidence; this is a hypothesis space, not a diagnosis. **This is the *real* root cause of today's 499s** (and, transitively, the 25 silent drops), and it needs its own SRE-side investigation ticket — tracked in Follow-up Actions. Until it lands, client-side retry would be treating a symptom rather than the cause, and could even compound the symptom (more retries → more concurrent fetches → more event-loop saturation → more retries needed).
 
 ### Acute contributor #1 — cache-eviction TypeError in seinn's service worker
 
@@ -154,12 +194,13 @@ The `#459` race-fix shipped on 2026-05-20; the daily pattern persists after it, 
 - **Cascade hypothesis (3): "media-api is the shared bottleneck for the webhook subscribers' downstream calls."** Falsified by media-api's logs and loganne's nginx access log for the burst window. media-api was *processing* incoming PUTs throughout (the `Set Track Weighting` log lines continue at normal cadence), but was *itself a victim* of loganne saturation — 25 of its 76 outbound POSTs to loganne timed out. The shared bottleneck is loganne, not media-api. The cascade mental model was inverted in the initial report and has been corrected.
 - **Framing the recovery as "the in-flight media_manager deploy".** Falsified by the timeline: the last `trackUpdated ... errored` is at 14:14:57 and the first `trackUpdated ... finished playing` is at 14:19:58, both bracketing the 14:17 Chrome-tab restart. The deploy at 14:25 — if any — is unrelated. Same conclusion as the prior incident.
 - **Retrying stranded webhooks before sampling.** Operationally correct (cleared the alert) but cost us the per-attempt `errorPhase` field (just shipped in `lucos_loganne#480`) for these 19 events. Memory rule saved (`feedback_snapshot_before_retry.md`); `lucas42/lucos_loganne#483` (preserve attempt history) would make this rule obsolete by always keeping the data through retries.
+- **Asserting unverified that `lucos_loganne_pythonclient` has retry semantics.** First draft of this amendment built a "Go client should match Python client's resilience" argument on top of this. Falsified by architectural review reading the actual Python code (`session.post` in a single `try/except`, no retry). The correct picture is that *all four* loganne clients across Python, Go (×2), and Erlang are fire-and-forget — the de-facto contract is no retry, not "Go is the outlier." Lesson: claims about sibling repos' behaviour need verification before they become load-bearing in a write-up. Recorded as a feedback memory.
 
 ---
 
 ## Follow-up Actions
 
-Full inventory of issues raised by this incident, across all four repositories touched. Six are filed and tracked; one is in architectural consultation; one is filed elsewhere (this incident report itself, amended via PR linked at top of the issue list).
+Full inventory of issues raised by this incident, across the five repositories touched. All nine items are filed and tracked.
 
 | # | Action | Issue / PR | Status |
 |---|---|---|---|
@@ -170,7 +211,12 @@ Full inventory of issues raised by this incident, across all four repositories t
 | 5 | **Retrofit `lucos_media_weightings/weight-track` to accept-202-enqueue per ADR-0006.** Reduces loganne's outbound webhook hold time, indirectly addressing event-loop saturation on the ingress and `/_info` sides too. | [`lucas42/lucos_media_weightings#236`](https://github.com/lucas42/lucos_media_weightings/issues/236) | Open |
 | 6 | **Surface loganne's own saturation state via `/_info` metrics** (event-loop lag, in-flight deliveries, response-time percentiles). Closes the "we had to compare logs at incident wrap-up to find this" gap. | [`lucas42/lucos_loganne#484`](https://github.com/lucas42/lucos_loganne/issues/484) | Open |
 | 7 | **Preserve per-attempt webhook delivery history** instead of overwriting on retry. Closes the diagnostic-data-loss footgun (#483 body details the schema; SRE memory `feedback_snapshot_before_retry.md` becomes obsolete once shipped). | [`lucas42/lucos_loganne#483`](https://github.com/lucas42/lucos_loganne/issues/483) | Open |
-| 8 | **Fix media-api's fire-and-forget loganne client** — 25 events silently dropped today. Architectural shape (inline retry in `api/loganne.go` vs extracted `lucos_loganne_goclient`) under consultation with `lucos-architect`; ticket to be filed once shape is decided. | (architect consultation, message 2026-05-22) | Pending design |
+| 8 | **Investigate why loganne becomes unresponsive (returns 499s) under outbound webhook burst despite accept-202-fast.** The *real* root cause of today's 25 silent drops and the 86% `/_info` poll failures. Hypothesis space includes Node event-loop saturation under undici microtask flood, body-parser blocking, GC pauses, or TCP accept-queue backup; investigation will distinguish. Must land before any client-side retry conversation. | [`lucas42/lucos_loganne#485`](https://github.com/lucas42/lucos_loganne/issues/485) | Open |
+| 9 | **Fix `lucos_creds`'s loganne client using `http.DefaultClient`** — no timeout configured, hung loganne would block credential operations indefinitely. Independent correctness bug; one-line fix mirroring the pattern in media-metadata-api. | [`lucas42/lucos_creds#337`](https://github.com/lucas42/lucos_creds/issues/337) | Open |
+
+The fix proposed in [`lucas42/lucos_loganne#474`](https://github.com/lucas42/lucos_loganne/issues/474) (include `error.cause.code` in the persisted webhook errorMessage), filed in the 2026-05-19 report, has shipped. So have [`#479`](https://github.com/lucas42/lucos_loganne/issues/479) (`durationMs` per delivery) and [`#480`](https://github.com/lucas42/lucos_loganne/issues/480) (`errorPhase` distinguishing connect vs response ETIMEDOUT). All three pieces of diagnostic enrichment are in production; the only reason we couldn't use `errorPhase` for today's burst is the retry-overwrite problem `#483` will fix.
+
+**Notably *not* in the table:** a client-side retry ticket on `lucos_media_metadata_api`. The initial amendment proposed this; architectural review (this amendment's second pass) determined it was premature — client-side retry would be treating a symptom of `#485`'s unexplained mechanism, and if the cause is undici microtask flood (the most likely hypothesis), retries *compound* the problem. The estate-wide loganne-client-contract conversation is parked pending `#485`'s findings; an ADR may follow that.
 
 The fix proposed in [`lucas42/lucos_loganne#474`](https://github.com/lucas42/lucos_loganne/issues/474) (include `error.cause.code` in the persisted webhook errorMessage), filed in the 2026-05-19 report, has shipped. So have [`#479`](https://github.com/lucas42/lucos_loganne/issues/479) (`durationMs` per delivery) and [`#480`](https://github.com/lucas42/lucos_loganne/issues/480) (`errorPhase` distinguishing connect vs response ETIMEDOUT). All three pieces of diagnostic enrichment are in production; the only reason we couldn't use `errorPhase` for today's burst is the retry-overwrite problem `#483` will fix.
 
@@ -188,4 +234,5 @@ The fix proposed in [`lucas42/lucos_loganne#474`](https://github.com/lucas42/luc
 ## Amendment history
 
 - **2026-05-22 (initial)**: Original report, framing root cause as the in-burst `TypeError` in `_evictIfOverBudget()`.
-- **2026-05-22 (amended)**: Post-merge investigation revised the root-cause picture substantially. Direct SW-console probing falsified the "corrupt cache entry" hypothesis; the chronic LRU-desync race (`#472`) emerged as the deeper root cause. Avalon nginx access log analysis surfaced the upstream silent-drop story (media-api → loganne, 25/76 events lost during the burst) and the loganne self-saturation common-mode mechanism. Four further issues filed (`#472`, `#484`, plus architect consultation on media-api's loganne client). Cascade hypothesis (3) — "media-api is the bottleneck" — was falsified and removed from analysis.
+- **2026-05-22 (amended)**: Post-merge investigation revised the root-cause picture substantially. Direct SW-console probing falsified the "corrupt cache entry" hypothesis; the chronic LRU-desync race (`#472`) emerged as the deeper root cause. Avalon nginx access log analysis surfaced the upstream silent-drop story (media-api → loganne, 25/76 events lost during the burst) and the loganne self-saturation common-mode mechanism. Two further issues filed (`#472`, `#484`) plus a then-pending architectural consultation on media-api's loganne client. Cascade hypothesis (3) — "media-api is the bottleneck" — was falsified and removed from analysis.
+- **2026-05-22 (amended, second pass)**: Architectural review of the first amendment found a load-bearing factual error — the claim that `lucos_loganne_pythonclient` has retry semantics is false (the Python client is fire-and-forget, just like the three other loganne clients). The first amendment's framing of "media-api's Go client is the outlier" therefore reversed. Replaced with a corrected estate-wide picture: all four clients (Python, Go ×2, Erlang) are fire-and-forget. The originally-pending "fix media-api's fire-and-forget client" ticket was withdrawn in favour of `lucas42/lucos_loganne#485` (investigate why loganne returns 499s despite accept-202-fast) — which is the actual root cause of the silent drops and must be understood before any client-side resilience work. `lucas42/lucos_creds#337` (no-timeout correctness bug, found during the review) was also filed.
