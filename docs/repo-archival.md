@@ -60,6 +60,7 @@ Note: there are no persistent service directories on production hosts (compose f
 
 - [ ] **Stop and remove containers** on the deployment host(s): `docker stop <container_names> && docker rm <container_names>`.
 - [ ] **Remove Docker volumes** if the data is no longer needed. If the data might be needed for reference, take a final backup first. Use `docker volume rm <volume_name>` for each volume registered in configy's `volumes.yaml`.
+- [ ] **Remove Docker networks.** Each compose project creates a `{project}_default` network on first deploy. Since compose files are not present on production hosts post-deploy, `docker compose down` cannot be used to remove it — remove manually: `docker network rm <project>_default` on each deployment host. First verify no containers are still attached: `docker network inspect <network> --format '{{len .Containers}}'` should return `0`.
 - [ ] **Remove the service directory** from the deployment host if it was cloned there (rarely present — see note above).
 
 ### 2e. Clean up credentials
