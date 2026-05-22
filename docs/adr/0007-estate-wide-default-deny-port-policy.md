@@ -8,7 +8,9 @@
 
 The lucos estate has no host-level firewall. Docker's iptables rules forward published-container traffic from the public interface into the container, but those rules are *routing*, not *access control*. The consequence is that **every port that any container publishes (via `ports:`), or that any process running with `network_mode: host` binds, is immediately internet-reachable.** No review gate. No approve-before-expose. No default-deny.
 
-This was documented in `references/network-topology.md` as an architectural reality, but the consequences turned out to be broader than that doc suggested. The 2026-05-21 finding on `lucos_monitoring`'s Erlang Port Mapper Daemon (port 4369) — internet-reachable for ~13 months, accumulating daily portscan attempts in the container logs — was the trigger. A wider port survey on avalon found:
+This has been a known architectural property — for example, `http://178.32.218.44:8019/_info` (loganne's backend port on avalon) returns a 200 to any internet client, bypassing the nginx router entirely. The router provides TLS termination and domain routing; it does not provide access control. Application-level auth (`CLIENT_KEYS`) is the only real protection.
+
+The consequences turned out to be broader than that observation suggested. The 2026-05-21 finding on `lucos_monitoring`'s Erlang Port Mapper Daemon (port 4369) — internet-reachable for ~13 months, accumulating daily portscan attempts in the container logs — was the trigger. A wider port survey on avalon found:
 
 | Port | Service | Source | Risk |
 |---|---|---|---|
@@ -148,7 +150,7 @@ The hosting provider exposes a stateless IPv4 packet filter ahead of the host ne
 
 **Rejected.** Stateless, IPv4-only, requires console access for changes, no observability from inside the host. Of all the candidates, it has the highest stale-config risk because changes require a different management surface entirely. Given a working Layer 2, the marginal benefit is low. lucas42 confirmed dropping it on 2026-05-21.
 
-### Producer-side concurrency cap-equivalent: declare the firewall scope per-port-range in configy
+### Port-band allow-list in configy
 
 Allow `lucos_configy` to declare a "service port band" (e.g. 8000–8050) that's allowed by default, so individual services don't need `public_ports` entries.
 
@@ -170,7 +172,7 @@ Allow `lucos_configy` to declare a "service port band" (e.g. 8000–8050) that's
 - **Sub-second open window at host boot.** Between Docker daemon ready and `lucos_firewall` container ready, the host is unfiltered. Acceptable trade-off; if we ever need to harden it we can add an `iptables-restore` of a baked-in fallback ruleset to the host's boot sequence, but that re-introduces a host-config dependency this ADR is trying to avoid.
 - **Configy is now a hard dependency of network reachability.** If configy is unreachable when the firewall container starts, the container fails to come up. Mitigation: ship a baked-in fallback ruleset in the firewall image (base list + nothing else, fails closed-ish). The fallback is documented inside the firewall repo, not duplicated here.
 - **IPv6-on-bridge-network is a new bit of Docker config to maintain.** Daemon-side `"ipv6": true` and `fixed-cidr-v6` need to be set on each host; per-stack `enable_ipv6` must be set wherever a container needs IPv6 outbound (currently `lucos_monitoring` and `lucos_time`). This is a real ongoing cost — every new service that needs outbound IPv6 has to remember to enable it on its compose network.
-- **Some existing inter-service traffic that currently traverses public IPs will hit the firewall.** Per `references/network-topology.md`, services already use public HTTPS endpoints for inter-service comms — so the router's 443 is the entry point and there's no expected breakage. But: any service inadvertently calling a backend port directly (e.g. `http://178.32.218.44:8019` to loganne) will start failing after the firewall flips to enforce. Dry-run mode (log-only) on avalon for ~a week before enforce is the safety net for this.
+- **Some existing inter-service traffic that currently traverses public IPs will hit the firewall.** lucos services already use public HTTPS endpoints for inter-service comms (e.g. `lucos_arachne_ingestor` calls `https://contacts.l42.eu`, not `http://localhost:8013`) — so the router's 443 is the entry point and there's no expected breakage. But: any service inadvertently calling a backend port directly (e.g. `http://178.32.218.44:8019` to loganne) will start failing after the firewall flips to enforce. Dry-run mode (log-only) on avalon for ~a week before enforce is the safety net for this.
 - **`lucos_firewall` is a new service with operational cost.** Healthcheck, monitoring, deploy pipeline, the usual lucos things. The container's role is small but the surface area of "another thing to keep running" is real.
 
 ### Out of scope
@@ -199,7 +201,6 @@ Sequenced so the most-impactful and lowest-risk changes go first. Each is a sepa
 ## References
 
 - `lucas42/lucos/issues/169` — full design conversation, including the original SRE finding, the security-team scoping, and the four-tweak sign-off from lucas42.
-- `references/network-topology.md` — pre-existing acknowledgement that there is no internal trusted network between services; this ADR addresses the inverse property (that public ports are similarly un-gated).
 - `lucas42/lucos_monitoring` commit `ab9f6b9` (2024-04-29) — original addition of `network_mode: host` for IPv6 support.
 - `lucas42/lucos_time` commit `2d36838` (2024-04-29) — same.
 - `lucas42/lucos_configy` `README.md` — current `http_port` / `hosts` / `domain` schema; `public_ports` is the new field this ADR depends on.
