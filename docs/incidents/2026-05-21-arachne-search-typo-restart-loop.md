@@ -32,16 +32,14 @@ PR #555 itself does not touch the buggy code path and is not the cause — it wa
 | 23:55:12 | CircleCI `deploy-avalon` job marked **failed** (healthcheck never went green) |
 | ~23:57 | First `lucos_docker_health/avalon` failure logged (assuming 5-consecutive-minute-poll threshold counted back from 00:02:00) |
 | 2026-05-22 00:02:00 | `lucos_docker_health/avalon` 5th consecutive minute-poll failure; check goes red with debug `"Unhealthy containers: lucos_arachne_search"` |
-| ~00:11 | lucas42 reports estate breakage to SRE via team-lead |
-| ~00:12 | SRE pulls container logs, identifies typo bugs in `search/entrypoint.sh` lines 84 and 87; confirms via `git blame` that bugs pre-date PR #555 (since 2025-09-21, commit `5cf03f1b`) |
-| ~00:14 | Incident issue [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arachne/issues/556) filed |
-| ~00:15 | Hotfix PR [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) opened |
+| before 00:07 | lucas42 noticed the alerts and routed to SRE via team-lead; SRE began investigation (monitoring → container ps → docker logs → entrypoint.sh → git blame, confirming the typos pre-date PR #555 by 9 months, since 2025-09-21 commit `5cf03f1b`) |
+| 00:07:52 | Incident issue [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arachne/issues/556) filed |
+| 00:08:21 | Hotfix PR [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) opened |
 | 00:10:53 | PR #557 merged (auto-merge after code-reviewer approval, `lucos_arachne` is unsupervised) |
 | 2026-05-22 00:16:54 | New `lucos_arachne_search` container started on hotfix image; entrypoint runs cleanly to completion, revoking both stale keys (`lucos_comhra:production` AND `lucos_comhra:development` — a second orphan the SRE had not anticipated, also cleaned up by the same fix). Healthcheck goes green. |
 | 2026-05-22 ~00:17 | `lucos_arachne/search` returns to `healthy`. CircleCI `lucos/deploy-avalon` job marked **success**. |
 | 2026-05-22 ~00:18 | `lucos_docker_health/avalon` returns to `healthy` once consecutive-error counter clears. Incident resolved. |
 
-The PR-merge timestamp predating the issue-file timestamp is real — auto-merge on the hotfix fired while the SRE was still drafting the incident issue body, because code-reviewer approval landed on PR #557 before the issue body was finalised. Order in the table is preserved as-recorded.
 
 ---
 
@@ -87,9 +85,11 @@ No change proposed here — the alternative (mask reconciliation failures with `
 
 `shellcheck` would have flagged both `$EXISTING_SYSTEMS_JSON` and `$TYPESENSE_ADMIN_SYSTEM` as referenced-but-unassigned (rule [SC2154](https://www.shellcheck.net/wiki/SC2154)). There is no `shellcheck` job in the search service's CI today. This is a cheap, deterministic guardrail that would have caught this exact class of bug at PR time, nine months ago. See follow-up [lucas42/lucos_arachne#558](https://github.com/lucas42/lucos_arachne/issues/558).
 
-### Detection — monitoring caught it within ~9 minutes; user-report came ~17 min later
+### Detection — monitoring caught it within ~1.5 minutes; user-report routed within ~13 minutes
 
-The first `monitoring` signal was `lucos_arachne/circleci: build-deploy failed` (the deploy-avalon job marking itself failed at 23:55:12), followed by `lucos_arachne/search: fetch failed` (the search check on /_info failing because the container was down) and `lucos_docker_health/avalon` (the docker-host health cron picking up the unhealthy container after its 5-consecutive-minute-poll threshold at ~00:02:00). The SRE was not paged but lucas42 noticed the alerts and routed to SRE via team-lead at ~00:11. From there, diagnosis-to-hotfix-merge took ~10 minutes.
+The first `monitoring` signal was `lucos_arachne/circleci: build-deploy failed` (the deploy-avalon job marking itself failed at 23:55:12, ~1m22s after the first container crash at 23:53:50). That was followed by `lucos_arachne/search: fetch failed` (the search check on /_info failing because the container was down) and `lucos_docker_health/avalon` (the docker-host health cron picking up the unhealthy container after its 5-consecutive-minute-poll threshold at ~00:02:00).
+
+The SRE was not paged. lucas42 noticed the alerts, routed to SRE via team-lead, and the SRE began investigation by ~00:07 (working bound from issue #556 being filed at 00:07:52Z). From investigation-start to hotfix-merged was ~3–4 minutes (00:07:52 issue → 00:08:21 PR → 00:10:53 auto-merged). The path was short because the typo was visible on first read of the entrypoint script and `git blame` resolved the "did PR #555 cause this?" question immediately.
 
 The detection chain worked. The signal that flagged this most usefully was the `lucos_docker_health/avalon` debug string explicitly naming `lucos_arachne_search` as the unhealthy container — that pointed the SRE at the right container before any logs were read.
 
