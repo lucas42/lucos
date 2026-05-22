@@ -109,8 +109,11 @@ The only marginal time cost was the SCP attempt to read `lucos_arachne/productio
 |---|---|---|
 | Original incident issue (root cause + hotfix) | [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arachne/issues/556) | Closed by [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) |
 | Add `shellcheck` CI job to lucos_arachne to catch this class of typo (referenced-but-undefined variables) at PR time | [lucas42/lucos_arachne#558](https://github.com/lucas42/lucos_arachne/issues/558) | Open |
+| Update archival checklist (`docs/repo-archival.md`) with consumer-restart and downstream-state-reconciliation steps for decommissioning | [lucas42/lucos#183](https://github.com/lucas42/lucos/issues/183) | Open |
 
 An estate-wide `shellcheck` rollout (covering every lucos repo with non-trivial entrypoint shell) is a plausible second-stage follow-up but is intentionally not filed here — the arachne-only issue should be implemented and judged useful first. If it is, the estate sweep can be raised as a separate ticket at that point.
+
+The archival-checklist follow-up was added after merge of the original incident-report PR, when both lucos-architect and lucos-security independently flagged the same gap during teammate notifications. It is filed as an SRE-owned issue (per "Receiving incident notifications" coordination), with sysadmin tagged in the body as the domain owner for implementation.
 
 ---
 
