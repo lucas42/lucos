@@ -48,7 +48,8 @@ If an issue in a paused repository has a genuine critical security concern, it m
 Within a given Priority field value (Critical / High / Medium / Low), order issues by:
 
 1. **Strategic tier they fall under.** Issues advancing active priority #1 sit above issues advancing active priority #2, and so on. Issues that do not fall under any active strategic priority sit below issues that do.
-2. **Age, oldest first**, within the same strategic tier.
+2. **Paused-repo issues sort last** within their Priority level, below all other no-tier issues. Once a repository is paused, its issues should only be picked up if the queue is otherwise clear at their Priority level.
+3. **Age, oldest first**, within the same strategic tier (or within the paused-repo band).
 
 Strategic-tier ordering only applies *within* a Priority field value — it does not promote a Medium issue above a High one. To promote across Priority levels, change the Priority field. Two issues can therefore be in the same tier but at different Priority levels; the Priority field still wins.
 
