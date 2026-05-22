@@ -2,17 +2,21 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when setting the Priority field during triage.
 
-**Last updated**: 2026-04-06
+**Last updated**: 2026-05-22
 
 ---
 
 ## Active priorities (in order)
 
-### 1. lucos_photos and lucos_photos_android
+### 1. Media metadata migration to lucos_eolas
 
-The `lucos_photos` project and its associated repositories (especially `lucos_photos_android`) remain a high priority. The Android app has launched and the service now has production data, making reliability, correctness, and user-facing improvements important.
+A natural extension of the completed `lucos_media` v2 → v3 migration. The next phase moves non-media-specific metadata out of `lucos_media_metadata_api` and into `lucos_eolas` as the canonical home — people (composers, producers, artists), places, content-warning classifications, and other cross-domain entities. The metadata API stays focused on media-specific concerns.
 
-Issues raised off the back of this launch (e.g. bugs discovered in production use, missing features noticed during real usage, performance issues with real data) should be treated as Priority = High.
+In-flight tickets sit across `lucos_media_metadata_api` (e.g. Person-typed tags, memory, offence, theme_tune/soundtrack predicates, URI rewrite on source change) and `lucos_eolas` (new types as needed). Issues progressing this work should be Priority = High.
+
+### 2. lucos_firewall
+
+Design and rollout of the proposed `lucos_firewall` service, per ADR-0007. Covers the bootstrap of the new repo, the `public_ports` schema and population in `lucos_configy`, RNDC tightening in `lucos_dns`, and the progressive deployment to avalon → xwing → salvare. Issues that progress the firewall design or its rollout should be Priority = High.
 
 ---
 
@@ -33,7 +37,7 @@ The Priority field is set on **every triaged issue** — including refinement-ph
 When setting Priority during triage:
 
 - **Critical**: A production service is completely down and users are affected right now. This is for full service outages only — not for "very important" features, not for degraded performance, and not for bugs that have workarounds. If you are unsure whether something qualifies, it is not critical. See "Preventing priority inflation" below.
-- **High**: Issues that fall under priority 1 (lucos_media_* v3 migration) or priority 2 (lucos_photos, lucos_photos_android), issues causing a current alert (see "Active alerts" below), or are urgent regardless of area.
+- **High**: Issues that fall under any of the active priorities listed above, issues causing a current alert (see "Active alerts" below), or are urgent regardless of area.
 - **Medium**: Important issues not in the top priority areas.
 - **Low**: Everything else, including issues in paused repositories.
 
