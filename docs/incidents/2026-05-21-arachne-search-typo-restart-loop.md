@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-05-21 |
-| **Duration** | ~XX minutes (23:52:55 UTC start to TBD pending hotfix deploy completion) |
+| **Duration** | ~23 minutes (2026-05-21 23:53:50 UTC, first container crash, to 2026-05-22 00:16:54 UTC, container started healthy on hotfix image) |
 | **Severity** | Partial degradation (search subsystem down; rest of arachne running) |
 | **Services affected** | `lucos_arachne` (search subsystem only — web, mcp, explore, ingestor, triplestore all healthy throughout) |
 | **Detected by** | Monitoring alerts (`lucos_arachne/search: fetch failed`, `lucos_arachne/circleci: build-deploy failed`), `lucos_docker_health/avalon` after 5 consecutive minute-polls; surfaced to SRE by lucas42 |
@@ -14,7 +14,7 @@ Source issue: [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arach
 
 ## Summary
 
-A deploy of [lucas42/lucos_arachne#555](https://github.com/lucas42/lucos_arachne/pull/555) (cross-system Person merging in search index) triggered a redeploy of the `lucos_arachne_search` container on avalon. The new container's `entrypoint.sh` reconciled its typesense API keys against `CLIENT_KEYS` and found one orphan key (`lucos_comhra:production`, left over from comhra's earlier decommissioning). It attempted to delete the orphan via a curl call that contained two pre-existing latent typos — both naming undefined variables — producing a `DELETE /keys/` request with no auth header. Typesense replied 404, curl exited 22, `set -e` killed the entrypoint script and the typesense daemon along with it. Docker restarted the container, which crashed the same way; loop. The hotfix at [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) corrects the two variable names; first deploy after merge restored service.
+A deploy of [lucas42/lucos_arachne#555](https://github.com/lucas42/lucos_arachne/pull/555) (cross-system Person merging in search index) triggered a redeploy of the `lucos_arachne_search` container on avalon. The new container's `entrypoint.sh` reconciled its typesense API keys against `CLIENT_KEYS` and found two orphan keys (`lucos_comhra:production` and `lucos_comhra:development`, left over from comhra's earlier decommissioning — only the first was visible in the initial diagnosis logs because the script exited on the first orphan encountered). It attempted to delete the first orphan via a curl call that contained two pre-existing latent typos — both naming undefined variables — producing a `DELETE /keys/` request with no auth header. Typesense replied 404, curl exited 22, `set -e` killed the entrypoint script and the typesense daemon along with it. Docker restarted the container, which crashed the same way; loop. The hotfix at [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) corrects the two variable names; first deploy after merge cleanly revoked both orphans and restored service.
 
 PR #555 itself does not touch the buggy code path and is not the cause — it was simply the first deploy after the orphan key was created that exercised the latent bug.
 
@@ -37,7 +37,9 @@ PR #555 itself does not touch the buggy code path and is not the cause — it wa
 | ~00:14 | Incident issue [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arachne/issues/556) filed |
 | ~00:15 | Hotfix PR [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) opened |
 | 00:10:53 | PR #557 merged (auto-merge after code-reviewer approval, `lucos_arachne` is unsupervised) |
-| TBD | CircleCI hotfix `deploy-avalon` job succeeds — container starts cleanly, orphan key deleted, `lucos_arachne/search` returns to `healthy`, `lucos_docker_health/avalon` recovers — TBD pending deploy completion |
+| 2026-05-22 00:16:54 | New `lucos_arachne_search` container started on hotfix image; entrypoint runs cleanly to completion, revoking both stale keys (`lucos_comhra:production` AND `lucos_comhra:development` — a second orphan the SRE had not anticipated, also cleaned up by the same fix). Healthcheck goes green. |
+| 2026-05-22 ~00:17 | `lucos_arachne/search` returns to `healthy`. CircleCI `lucos/deploy-avalon` job marked **success**. |
+| 2026-05-22 ~00:18 | `lucos_docker_health/avalon` returns to `healthy` once consecutive-error counter clears. Incident resolved. |
 
 The PR-merge timestamp predating the issue-file timestamp is real — auto-merge on the hotfix fired while the SRE was still drafting the incident issue body, because code-reviewer approval landed on PR #557 before the issue body was finalised. Order in the table is preserved as-recorded.
 
@@ -69,7 +71,7 @@ Both typos have been latent in the file since commit `5cf03f1b` (2025-09-21, "ad
 
 ### Trigger — orphan key from earlier `lucos_comhra` decommissioning, first deploy after
 
-The orphan was created when `lucos_comhra` was decommissioned and its `lucos_comhra:production` API key was removed from arachne's `CLIENT_KEYS` env var in `lucos_creds`. The search container was not restarted at that time, so the corresponding key in typesense's data volume was never reconciled. It sat there as a benign orphan: not in `CLIENT_KEYS`, no longer used, but still present in typesense.
+The orphans were created when `lucos_comhra` was decommissioned and its `lucos_comhra:production` and `lucos_comhra:development` API keys were removed from arachne's `CLIENT_KEYS` env var in `lucos_creds`. The search container was not restarted at that time, so the corresponding keys in typesense's data volume were never reconciled. They sat there as benign orphans: not in `CLIENT_KEYS`, no longer used, but still present in typesense. Only one (`:production`) was named in the diagnosis logs because the entrypoint exited on the first one it tried to delete; the second (`:development`) was only revealed once the fix landed and the entrypoint ran to completion and revoked both.
 
 Any deploy after that orphan was created would exercise the buggy code path. PR #555 was simply the first.
 
