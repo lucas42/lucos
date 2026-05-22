@@ -7,7 +7,7 @@ A step-by-step checklist for retiring and archiving a lucos repository. Not ever
 Before starting teardown, understand what you're removing and who might be affected.
 
 - [ ] **Identify repo type.** Is this a deployed service (has a `domain` in configy's `systems.yaml`)? A script or library (`scripts.yaml`)? A component (`components.yaml`)?
-- [ ] **Check for dependents.** Search the estate for references: `docker-compose.yml` files, `package.json` / `go.mod` imports, environment variables pointing to this service's domain, Loganne webhook config, and arachne ingestor `live_systems` (in `ingestor/triplestore.py`).
+- [ ] **Check for dependents.** Search the estate for references: `docker-compose.yml` files, `package.json` / `go.mod` imports, environment variables pointing to this service's domain, Loganne webhook config, and arachne ingestor `live_systems` (in `ingestor/triplestore.py`). **Record the list of consumer services** — those with a `CLIENT_KEYS` or other env-var-referenced link to the retiring service — noting each service's container name(s) and the Docker host it runs on. This list is reused in Phase 2e; reconstructing it from scratch during credential cleanup is error-prone, especially under time pressure.
 - [ ] **Review open issues.** Close all open issues with a comment: "Closing — this repository is being archived." Transfer any issues that are still relevant to a successor repo if one exists.
 - [ ] **Remove from project board.** Remove all items for this repo from the "lucOS Issue Prioritisation" project board.
 
@@ -66,6 +66,15 @@ Note: there are no persistent service directories on production hosts (compose f
 
 - [ ] **Check lucos_creds** for credentials belonging to this service (both credentials it owns and linked credentials where it's a client). Remove all of them, including `PORT` and `APP_ORIGIN`. The configy sync only writes credentials for systems currently in configy — it has no cleanup logic for removed systems, so orphaned credentials are not auto-deleted. Simple credentials (type `config` or `simple`) are deleted with `ssh -p 2202 creds.l42.eu "{system}/{env}/{key}="` (empty value = delete). Linked credentials (keys beginning `KEY_`) need the `rm` form: `ssh -p 2202 creds.l42.eu "rm {client}/{env} => {server}/{env}"`.
 - [ ] **Check `CLIENT_KEYS`** on other services — if the retired service was a client of other services, its token will be in their `CLIENT_KEYS`. Removing the linked credential from lucos_creds handles this automatically.
+- [ ] **Restart consumer containers.** Removing a linked credential from lucos_creds purges the env var from future deploys, but does not restart running containers — they continue to hold the old env until redeployed. For each consumer service in the list recorded in Phase 1, trigger a redeploy via CI (preferred — healthcheck-verified) or `docker restart <container_name>` on the host as a fallback. Without this step, orphan credentials can persist in process memory for months until the next unrelated deploy.
+- [ ] **Reconcile downstream pre-registered state.** Some consumers persist derived state in their own datastores — state that survives both the retired service's shutdown *and* the consumer's own restart. For each consumer, identify whether the decommissioned service caused any of the following to be registered, and either revoke/delete it explicitly or confirm the consumer's own reconciliation logic will purge it at next startup:
+
+  - **Typesense key store** (`lucos_arachne_search`): API keys are Raft-backed and survive container restarts. The `entrypoint.sh` stale-key-revocation loop reconciles them at startup — verify it will run cleanly, or manually delete via the Typesense admin API. *Worked example: the [2026-05-21 arachne-search restart-loop incident](docs/incidents/2026-05-21-arachne-search-typo-restart-loop.md) was triggered by two latent bugs in this loop reaching orphan `lucos_comhra` keys that had sat unreconciled for months.*
+  - **PostgreSQL role grants**: if the retired service had a dedicated DB role, revoke grants and drop the role from any shared databases.
+  - **SSH `authorized_keys`** on backup hosts: if the retired service had a deploy key for aurora or another SSH target, remove the public key from the relevant `authorized_keys` file.
+  - **GitHub deploy keys / App installations**: if the retired service had a per-repo deploy key or a GitHub App installation, revoke it via the GitHub API or repository settings.
+
+  If explicit revocation is not possible and reconciliation cannot be confirmed, document the residual orphan state in a comment on this archival issue and open a follow-up ticket.
 
 ### 2f. Clean up arachne knowledge graph
 
