@@ -133,9 +133,10 @@ Total recovery from emergency push (14:07:34) to verified healthy (14:11) was ~3
 | Action | Issue / PR | Status |
 |---|---|---|
 | Re-introduce `monitoringSelfRestart` event with correct init ordering and a regression test that covers the inets-not-started production failure mode | lucas42/lucos_monitoring#257 | Filed; awaiting triage |
-| Investigate why the outer `try/catch` in `server:start/2` did not log "Startup error occured" — the swallowed log line significantly slowed diagnosis on this incident | (sub-finding — to file if confirmed) | TBD — not yet filed; depends on whether anyone can reproduce the log-swallow locally |
-| Decide whether `inets`/`ssl` should be started once in `server:start/2` rather than redundantly in each fetcher (architectural follow-up — orthogonal to fixing #257) | (mentioned as Option 2 in lucas42/lucos_monitoring#257; not separately tracked) | Open discussion |
-| Resume the Check 3 consumer-side filter (the work that triggered detection) once `monitoringSelfRestart` is being emitted in production again | (no issue — internal SRE ops task) | Blocked on #257 |
+| Add an external observer for the `lucos_monitoring` layer — close the meta-observability gap that made this outage silent for ~25 minutes before detection | lucas42/lucos#195 | Filed; awaiting triage |
+| Investigate why the outer `try/catch` in `server:start/2` did not log "Startup error occured" — the swallowed log line significantly slowed diagnosis on this incident | Deferred — no separate ticket | Will file if the log-swallow recurs on a future incident; not worth speculative investigation now |
+| Decide whether `inets`/`ssl` should be started once in `server:start/2` rather than redundantly in each fetcher (architectural follow-up — orthogonal to fixing #257) | Mentioned as Option 2 in lucas42/lucos_monitoring#257; not separately tracked | Open discussion |
+| Resume the Check 3 consumer-side filter (the work that triggered detection) once `monitoringSelfRestart` is being emitted in production again | No issue — internal SRE ops task | Blocked on #257 |
 
 ---
 
@@ -144,7 +145,7 @@ Total recovery from emergency push (14:07:34) to verified healthy (14:11) was ~3
 - **Call-ordering bugs against undeclared runtime dependencies are silent in tests if the test happens to use a different short-circuit.** The eunit test passed because it exercised the unset-endpoint path; the production failure happened on the endpoint-set path with a different precondition (inets not running). When testing graceful-failure semantics for a new external call, exhaustively enumerate the failure preconditions the production environment can hit, not just the most convenient one.
 - **An application's runtime dependencies belong in the `applications:` list of the .app.src file, not in lazy callsites.** `inets` and `ssl` are required by `lucos_monitoring` whenever it makes any HTTP call. The lazy `ensure_all_started` in each fetcher works, but creates an implicit ordering constraint — anything else that wants to make HTTP calls must come after at least one fetcher has started. That constraint is not visible at the callsite. Declaring `inets`, `ssl` in `applications:` removes the constraint entirely.
 - **Direct push to main is the right move for emergency rollbacks when branch protection allows it.** The lucos branch-protection setup deliberately permits push-without-PR-review; the CI gate alone is sufficient for trusted committers. During an active outage, the PR-review-loop overhead (request review, wait for code-reviewer, address comments, request approval, merge) is not affordable. The default is PR; the emergency exception is direct push; this incident used the exception correctly.
-- **A monitoring system going down produces a silent outage in its own observability layer.** Without an external watchdog ("is monitoring.l42.eu up?"), the outage was only detected because the SRE happened to be doing follow-up work that depended on monitoring emitting a specific event. A truly external check on the monitoring layer would have detected this in <2 minutes rather than ~25.
+- **A monitoring system going down produces a silent outage in its own observability layer.** Without an external watchdog ("is monitoring.l42.eu up?"), the outage was only detected because the SRE happened to be doing follow-up work that depended on monitoring emitting a specific event. A truly external check on the monitoring layer would have detected this in <2 minutes rather than ~25. Tracked as a follow-up at `lucas42/lucos#195`.
 
 ---
 
