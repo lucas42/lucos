@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-05-21 |
-| **Duration** | ~23 minutes (2026-05-21 23:53:50 UTC, first container crash, to 2026-05-22 00:16:54 UTC, container started healthy on hotfix image) |
+| **Duration** | ~23 minutes (container restart loop: 2026-05-21 23:53:50 UTC → 2026-05-22 00:16:54 UTC) / ~3 days 10 hours (full incident: `lucos_arachne.search` monitoring check recovered 2026-05-25 10:26Z — see timeline correction below) |
 | **Severity** | Partial degradation (search subsystem down; rest of arachne running) |
 | **Services affected** | `lucos_arachne` (search subsystem only — web, mcp, explore, ingestor, triplestore all healthy throughout) |
 | **Detected by** | Monitoring alerts (`lucos_arachne/search: fetch failed`, `lucos_arachne/circleci: build-deploy failed`), `lucos_docker_health/avalon` after 5 consecutive minute-polls; surfaced to SRE by lucas42 |
