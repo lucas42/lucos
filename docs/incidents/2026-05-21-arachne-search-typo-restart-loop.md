@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-05-21 |
-| **Duration** | ~23 minutes (2026-05-21 23:53:50 UTC, first container crash, to 2026-05-22 00:16:54 UTC, container started healthy on hotfix image) |
+| **Duration** | ~23 minutes (container restart loop: 2026-05-21 23:53:50 UTC → 2026-05-22 00:16:54 UTC) / ~3 days 10 hours (full incident: `lucos_arachne.search` monitoring check recovered 2026-05-25 10:26Z — see timeline correction below) |
 | **Severity** | Partial degradation (search subsystem down; rest of arachne running) |
 | **Services affected** | `lucos_arachne` (search subsystem only — web, mcp, explore, ingestor, triplestore all healthy throughout) |
 | **Detected by** | Monitoring alerts (`lucos_arachne/search: fetch failed`, `lucos_arachne/circleci: build-deploy failed`), `lucos_docker_health/avalon` after 5 consecutive minute-polls; surfaced to SRE by lucas42 |
@@ -36,10 +36,14 @@ PR #555 itself does not touch the buggy code path and is not the cause — it wa
 | 00:07:52 | Incident issue [lucas42/lucos_arachne#556](https://github.com/lucas42/lucos_arachne/issues/556) filed |
 | 00:08:21 | Hotfix PR [lucas42/lucos_arachne#557](https://github.com/lucas42/lucos_arachne/pull/557) opened |
 | 00:10:53 | PR #557 merged (auto-merge after code-reviewer approval, `lucos_arachne` is unsupervised) |
+| 2026-05-22 00:11 | `lucos_arachne.search` synthetic monitoring check fires its first non-suppressed `monitoringAlert` (in the gap between PR #555's failed-deploy suppression window ending and PR #557's hotfix-deploy suppression window opening). |
 | 2026-05-22 00:16:54 | New `lucos_arachne_search` container started on hotfix image; entrypoint runs cleanly to completion, revoking both stale keys (`lucos_comhra:production` AND `lucos_comhra:development` — a second orphan the SRE had not anticipated, also cleaned up by the same fix). Healthcheck goes green. |
-| 2026-05-22 ~00:17 | `lucos_arachne/search` returns to `healthy`. CircleCI `lucos/deploy-avalon` job marked **success**. |
-| 2026-05-22 ~00:18 | `lucos_docker_health/avalon` returns to `healthy` once consecutive-error counter clears. Incident resolved. |
+| 2026-05-22 ~00:17 | Docker container healthcheck green. CircleCI `lucos/deploy-avalon` job marked **success**. |
+| 2026-05-22 ~00:18 | `lucos_docker_health/avalon` returns to `healthy` once consecutive-error counter clears. Container-side incident resolved. |
+| 2026-05-22 → 2026-05-25 | `search` check remained in monitoring's failure state continuously (confirmed by `monitoringAlertSuppressed: search` events on 2026-05-22 13:33Z and 2026-05-23 20:58Z during arachne deploy windows). The cause was not investigated at the time — see correction note below. |
+| 2026-05-25 10:26Z | `monitoringRecovery` for `lucos_arachne` emitted (after the v1.0.146/147 deploys). Full incident resolved. |
 
+> **Timeline correction (added 2026-05-26).** As originally written, this report claimed the incident was fully resolved at ~00:18 on 2026-05-22 when the container healthcheck went green. That is correct for the *container restart loop* but not for the `lucos_arachne.search` synthetic monitoring check, which stayed in a failing state for a further ~3 days 10 hours until 2026-05-25 10:26Z. The discrepancy was investigated under [lucas42/lucos_arachne#579](https://github.com/lucas42/lucos_arachne/issues/579), which was closed `not_planned` after the raft-lag hypothesis was refuted (no raft-lag events in the 7-day window apart from one 27-second burst 12 minutes *after* the recovery). The actual failure mode is unknown — the `debug` field that would have identified it was already gone by the time the investigation started, because nothing in `lucos_monitoring` persists check failure strings across container restarts (and `lucos_monitoring` itself was restarted twice on 2026-05-24). The diagnostic gap is tracked separately at [lucas42/lucos_monitoring#260](https://github.com/lucas42/lucos_monitoring/issues/260).
 
 ---
 
