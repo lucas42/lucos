@@ -90,10 +90,11 @@ But `lucos_loganne` did flap `event-loop-lag-low` 5 times during the burst. Each
 |---|---|---|---|
 | 2026-05-19 | Cache thrash (LRU race surfacing once cache hit 750 MB budget) | 56 | `deviceSwitch` |
 | 2026-05-20 | Cache thrash | 205 | `deviceSwitch` |
+| 2026-05-21 | Cache thrash (minor occurrence — multiple shorter bursts at 13:08, 14:46, 15:01, 15:09, 22:24 UTC; no separate incident report filed, data included in the 2026-05-22 report's recurrence table) | 16 | — |
 | 2026-05-22 | Cache-eviction `TypeError` ↑ chronic LRU desync; loganne cascade with 25 silent drops | 70 (+ ~25 dropped) | Manual tab reload + SRE-initiated webhook retry |
 | **2026-05-26** | **Client decode + fetch errors; no cache eviction; no loganne outbound saturation** | **724** | **Manual tab reload** |
 
-Three of the four bursts are now traced to a *cache* failure mode in the service worker. The 2026-05-26 burst is the outlier in that respect — and the reason the existing detectors had no chance.
+Four of the five bursts are now traced to a *cache* failure mode in the service worker. The 2026-05-26 burst is the outlier in that respect — and the reason the existing detectors had no chance.
 
 ---
 
