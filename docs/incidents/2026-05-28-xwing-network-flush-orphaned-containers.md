@@ -63,7 +63,7 @@ Source issue: [lucas42/lucos#192](https://github.com/lucas42/lucos/issues/192).
 | 18:50:23 | `lucos_docker_health v1.0.25` deployed |
 | 18:54:18 | `lucos_media_import v1.0.32` deployed |
 | 18:55:39 | Sysadmin sends `systemRecovered` Loganne event: all 6 services up, docker0 on the correct ULA prefix, no public `/64` route on docker0, external HTTP 200 on all 3 xwing public domains. SRE independently verifies and confirms |
-| TBD | #192 re-closed against the new verification standard (sysadmin Quality Control checklist requires external `curl /_info` per service for any daemon/network change, per [lucas42/lucos_claude_config@a48fe4b](https://github.com/lucas42/lucos_claude_config/commit/a48fe4b7b9c954b0211ba2e8835d8bc38a1308a7)). Held off pending follow-up #1 below — the recovery-instructions update is the work that closes #192 |
+| 18:57:09 | team-lead re-closes #192 — applied the new closure-flow STOP check (`bad0c3e`): consulted `monitoring.l42.eu/api/status` at the moment of closure, confirmed 51/51 systems healthy including all six xwing-hosted systems. Original IPv6 daemon-config fix in effect. The follow-up "recovery-instructions update" tracked in row 1 of the Follow-up Actions table remains outstanding as separate work |
 
 ---
 
