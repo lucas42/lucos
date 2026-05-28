@@ -28,31 +28,31 @@ Source issue: [lucas42/lucos#192](https://github.com/lucas42/lucos/issues/192).
 
 | Time (UTC) | Event |
 |---|---|
-| 2026-05-23 14:24 | lucos#192 filed by SRE — xwing's `fixed-cidr-v6` uses the host's own public `/64`, same misconfiguration that caused lucos#179 on salvare |
+| 2026-05-23 14:24 | #192 filed by SRE — xwing's `fixed-cidr-v6` uses the host's own public `/64`, same misconfiguration that caused #179 on salvare |
 | 2026-05-23 14:25 | Triaged Ready / Medium / owner=lucas42 (host change, can't go through CI) |
 | 2026-05-28 ~17:42 | lucas42 begins host changes on xwing: edits `/etc/docker/daemon.json` to set `fixed-cidr-v6: fd42:dead:beef::/64` and `ip6tables: true`; runs `systemctl stop docker && rm -rf /var/lib/docker/network/files/ && systemctl start docker` per the fix instructions in the issue body |
 | 17:44:57 | Last successful `lucos_docker_health/xwing-v4` report run — impact starts shortly after this |
 | 17:45:54 | lucas42 comments "I've enacted the instructions. Waiting verification" |
 | ~17:46 | First sysadmin verification probes xwing host. Daemon config correct; `/var/lib/docker/network/files/` gone; six containers `Up`. But the live-restore default kept the existing docker0 alive, so `2a01:4b00:8598:5a00::/64 dev docker0` still on the routing table |
-| 17:50:23 | First sysadmin verification posted to lucos#192 — partial: "daemon.json correct, but docker0 still holding old public /64 because of live-restore" |
+| 17:50:23 | First sysadmin verification posted to #192 — partial: "daemon.json correct, but docker0 still holding old public /64 because of live-restore" |
 | ~17:51 | lucas42 runs `sudo ip link delete docker0 && sudo systemctl restart docker` to force docker0 recreation. The `ip link delete` succeeds; the restart succeeds. But because `/var/lib/docker/network/files/` was already empty from the earlier flush, the daemon comes up with **no networks at all** — default bridge included. The kernel `br-*` devices from previously-defined user networks (`lucos_router_default`, `lucos_static_media_default`, etc.) survive in the kernel but are no longer known to docker |
 | ~17:51-17:52 | All running containers are now orphaned: each has a `NetworkID` in `docker inspect` for its declared `*_default` network, but `EndpointID` is empty, `IPAddress`/`Gateway` empty. `ps -ef \| grep docker-proxy` on the host returns nothing — no port-publishing processes — so external TCP connections to 80/443 on the xwing public IPs hit nothing and get "connection refused" |
 | ~17:52 | Container-level `Healthy` status is largely preserved because most containers' healthchecks are container-internal (e.g. `wget http://localhost:…`) and don't traverse the broken plane. The one exception is `lucos_static_media`, whose healthcheck resolves an external hostname; it goes `unhealthy` with `wget: bad address 'l42.eu'` |
-| 17:53:33 | Re-verification by sysadmin posted to lucos#192: "all green" — based on `docker ps` showing five `(healthy)` containers (the sixth, `lucos_static_media`, marked `(unhealthy)` was either missed or attributed elsewhere), and on the `docker0` public-IPv6 route being gone. `docker network ls` returning empty was explicitly labelled "pre-existing artefact of the earlier flush+live-restore" — i.e. expected harmless cleanup |
-| 17:54:02 | team-lead closes lucos#192 as completed on the basis of the re-verification |
+| 17:53:33 | Re-verification by sysadmin posted to #192: "all green" — based on `docker ps` showing five `(healthy)` containers (the sixth, `lucos_static_media`, marked `(unhealthy)` was either missed or attributed elsewhere), and on the `docker0` public-IPv6 route being gone. `docker network ls` returning empty was explicitly labelled "pre-existing artefact of the earlier flush+live-restore" — i.e. expected harmless cleanup |
+| 17:54:02 | team-lead closes #192 as completed on the basis of the re-verification |
 | ~18:00 | lucas42 checks `monitoring.l42.eu` and sees six failures inconsistent with the "all green" closure. Alerts team-lead |
-| 18:03:32 | team-lead reopens lucos#192 with a re-open comment summarising the contradiction and dispatches SRE |
-| 18:04:36 | SRE posts independent diagnosis comment on lucos#192 — `docker network ls` empty is the actual failure, not artefact; containers orphaned; recovery should be a redeploy of each xwing-hosted service to recreate networks |
+| 18:03:32 | team-lead reopens #192 with a re-open comment summarising the contradiction and dispatches SRE |
+| 18:04:36 | SRE posts independent diagnosis comment on #192 — `docker network ls` empty is the actual failure, not artefact; containers orphaned; recovery should be a redeploy of each xwing-hosted service to recreate networks |
 | ~18:0X | `monitoringAlert` sent via Loganne by SRE to tag the investigation in the event log |
 | TBD | Recovery begins — sysadmin dispatched to drive (their fingerprints on the daemon-state change) |
 | TBD | All six monitoring failures clear (external `curl` 200 on every xwing public domain; `xwing-v4` and `new_files` cron paths verified via ad-hoc rerun per the standing "cron paths need end-to-end verification" rule) |
-| TBD | lucos#192 re-closed against a verification standard that includes external reachability per system, not just `docker ps` Status |
+| TBD | #192 re-closed against a verification standard that includes external reachability per system, not just `docker ps` Status |
 
 ---
 
 ## Analysis
 
-### Stage 1 — The recovery procedure in lucos#192 was insufficiently specified for the live-restore case
+### Stage 1 — The recovery procedure in #192 was insufficiently specified for the live-restore case
 
 The original issue body's fix block was:
 
@@ -94,7 +94,7 @@ Six monitoring systems on `monitoring.l42.eu/api/status` were failing at the tim
 
 ## What Was Tried That Didn't Work
 
-1. **The fix sequence as documented in lucos#192.** Worked correctly on a host without `live-restore: true`; on xwing (`live-restore: true`), the stop+flush+start kept the old `docker0` alive with its stale IPv6 IPAM. Sysadmin's first verification correctly caught this — the failure mode here is "incomplete instructions for the actual host configuration," not a wrong diagnosis.
+1. **The fix sequence as documented in #192.** Worked correctly on a host without `live-restore: true`; on xwing (`live-restore: true`), the stop+flush+start kept the old `docker0` alive with its stale IPv6 IPAM. Sysadmin's first verification correctly caught this — the failure mode here is "incomplete instructions for the actual host configuration," not a wrong diagnosis.
 2. **`ip link delete docker0 && systemctl restart docker` as the remedial step.** Forced docker0 deletion succeeded, but combined with the already-empty `/var/lib/docker/network/files/` this brought the daemon up with zero networks at all. The default `bridge` would have been lazily recreated on first container use, but the user-defined networks could not be — there is no on-host source of truth for them after the flush.
 3. **Re-verification based on `docker ps` Status + IPv6 routing table check.** Reported "all green" while every container was running but unreachable. The pattern (container-internal healthchecks not exercising the failure plane) is the same one that bit on 2026-05-09, and the verification template did not learn from that.
 
@@ -104,7 +104,7 @@ Six monitoring systems on `monitoring.l42.eu/api/status` were failing at the tim
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Update lucos#192's recovery instructions to handle `live-restore: true` correctly and include a verification step that probes external reachability of every domain hosted on the affected host (not just `docker ps` / `docker network ls` / routing table). The issue itself is reopened; this is the work that closes it | lucas42/lucos#192 | Reopened — recovery in progress |
+| Update #192's recovery instructions to handle `live-restore: true` correctly and include a verification step that probes external reachability of every domain hosted on the affected host (not just `docker ps` / `docker network ls` / routing table). The issue itself is reopened; this is the work that closes it | lucas42/lucos#192 | Reopened — recovery in progress |
 | Add to the `lucos-system-administrator` verification reference: `docker network ls` returning empty is **never** an expected steady state. The default `bridge`/`host`/`none` are always present on a working daemon. If a host change leaves them missing, the change is incomplete | TBD — file against `lucos_claude_config` or the sysadmin persona's reference file | To file |
 | Add to the issue-manager / coordinator closure flow: before closing any issue whose fix touched a production host, consult `monitoring.l42.eu/api/status` and confirm no failures on systems hosted on the changed host. This would have prevented the false-positive closure at 17:54Z | TBD — file against `lucos_claude_config` (coordinator workflow) | To file |
 | Document the "container-internal healthchecks don't observe the network plane" pattern in the SRE persona reference (replacing or generalising the existing `feedback_healthcheck_depth_varies.md` memory which is currently siloed in SRE memory and didn't propagate to sysadmin's verification template) | TBD | To file |
