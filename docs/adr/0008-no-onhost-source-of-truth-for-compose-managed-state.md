@@ -118,7 +118,7 @@ Selected. The cost is real (CI round-trip during recovery) but bounded, infreque
 ## Cross-references
 
 - **Recovery runbook for the 2026-05-28 xwing incident** (under development by SRE) is the procedural counterpart to this ADR. It cites this document as the architectural justification for "redeploy, not recreate".
-- [ADR-0007: Estate-wide default-deny port policy](0007-estate-wide-default-deny-port-policy.md) — the firewall is deliberately compose-managed (a container service) precisely to align with this ADR: its rules are regenerated from `lucos_configy` on each deploy, not stored on the host.
+- [ADR-0007: Estate-wide default-deny port policy](0007-estate-wide-default-deny-port-policy.md) — the firewall is deliberately compose-managed (a container service) precisely to align with the architectural property this ADR formalises: its rules are regenerated from `lucos_configy` on each deploy, not stored on the host.
 - `docs/incidents/2026-05-28-xwing-network-flush-orphaned-containers.md` — the incident that surfaced this property and motivated the ADR.
 - `lucos_deploy_orb/src/commands/deploy.yml` — the implementation of the deploy model; `checkout` + transient `/home/circleci/project` + `DOCKER_HOST` over SSH is the mechanism by which "no on-host source of truth" is enforced today.
 - `lucos_configy` — the service-to-host mapping that operators must consult to identify "every service on the affected host" during recovery.
