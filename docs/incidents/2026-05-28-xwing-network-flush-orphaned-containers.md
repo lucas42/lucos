@@ -41,8 +41,8 @@ Source issue: [lucas42/lucos#192](https://github.com/lucas42/lucos/issues/192).
 | 17:53:33 | Re-verification by sysadmin posted to #192: "all green" — based on `docker ps` showing five `(healthy)` containers (the sixth, `lucos_static_media`, marked `(unhealthy)` was either missed or attributed elsewhere), and on the `docker0` public-IPv6 route being gone. `docker network ls` returning empty was explicitly labelled "pre-existing artefact of the earlier flush+live-restore" — i.e. expected harmless cleanup |
 | 17:54:02 | team-lead closes #192 as completed on the basis of the re-verification |
 | ~18:00 | lucas42 checks `monitoring.l42.eu` and sees six failures inconsistent with the "all green" closure. Alerts team-lead |
+| 18:01:34 | `monitoringAlert` Loganne event sent by SRE to tag the investigation in the event log (sent during initial diagnosis, before posting the comment on #192) |
 | 18:03:32 | team-lead reopens #192 with a re-open comment summarising the contradiction and dispatches SRE |
-| 18:01:34 | `monitoringAlert` Loganne event sent by SRE to tag the investigation in the event log (preceded the diagnosis comment by ~3 minutes) |
 | 18:04:36 | SRE posts independent diagnosis comment on #192 — `docker network ls` empty is the actual failure, not artefact; containers orphaned; recovery should be a redeploy of each xwing-hosted service to recreate networks |
 | ~18:07 | Sysadmin triggers 6 CI redeploys via CircleCI API for the xwing-hosted services |
 | 18:08:29 | `lucos_static_media v1.0.12` deployed to xwing-v4 — first network (`lucos_static_media_default`) recreated |
@@ -53,7 +53,7 @@ Source issue: [lucas42/lucos#192](https://github.com/lucas42/lucos/issues/192).
 | ~18:30 | `lucos_media_linuxplayer` first-stage deploy fails: compose declares `network_mode: host` but Docker's built-in `host` network is still missing from `docker network ls`. Docker blocks manual creation of predefined networks (`docker network create host` → reserved name error) |
 | ~18:34 | Sysadmin escalates daemon-restart request to lucas42 (`lucos-agent` has no NOPASSWD sudo for `systemctl`) |
 | ~18:35 | First post-incident `sudo systemctl restart docker` by lucas42. Built-in `bridge`/`host`/`none` remain absent after the restart |
-| ~18:36-18:38 | Sysadmin reads daemon logs (second sudo grant from lucas42) and identifies the root cause: Docker 29.4.0 emits `there are running containers, updated network configuration will not take affect` when `live-restore: true` and any containers are present. The daemon skips **all** network initialisation — including built-ins — to avoid disrupting running workloads. Every daemon restart that day had hit this because the 5 healthy containers were always present |
+| ~18:36-18:38 | Sysadmin reads daemon logs (second sudo grant from lucas42) and identifies the root cause: Docker 29.4.0 emits `there are running containers, updated network configuration will not take affect` [sic] when `live-restore: true` and any containers are present. The daemon skips **all** network initialisation — including built-ins — to avoid disrupting running workloads. Every daemon restart that day had hit this because the 5 healthy containers were always present |
 | ~18:39 | Sysadmin sends `plannedMaintenance` Loganne event; `docker stop`s all 6 containers (no sudo needed — three exit 0, three are SIGKILL'd at the 10s grace period). xwing is now fully down — deliberate ~1m planned outage in service of recovery |
 | ~18:40 | lucas42 runs second `sudo systemctl restart docker`. With zero running containers, the daemon initialises fully: built-in `bridge`/`host`/`none` created; `docker0` recreated with `172.27.0.1/16` and `fd42:dead:beef::1/64` ULA (the prefix that #192 was about) |
 | 18:40:47 | Second-stage `lucos_static_media v1.0.13` deployed |
@@ -114,6 +114,8 @@ The first-stage recovery (18:07–18:22 UTC) redeployed five of six services suc
 The natural first hypothesis was "restart the daemon to repopulate the built-ins." A first `sudo systemctl restart docker` was attempted (~18:35 UTC). It did not work; the built-ins remained absent. Sysadmin then escalated for daemon-log access, and the logs revealed:
 
 > `there are running containers, updated network configuration will not take affect`
+
+(Yes, "affect" — that's Docker's typo, verbatim from [`daemon/daemon_unix.go:839`](https://github.com/moby/moby/blob/master/daemon/daemon_unix.go) in `moby/moby`. Future responders grepping daemon logs should match the string exactly. Confirmed against upstream source while writing this report — "take effect" returns zero matches in moby, "take affect" returns one.)
 
 Docker 29.4.0's `live-restore: true` deliberately skips all network initialisation — including built-in `bridge`/`host`/`none` — when any containers are running at daemon start, to avoid disrupting the live-restored workloads. The daemon was hitting this on every restart because the five recovered containers had been kept alive by the very feature that was now blocking the recovery of the sixth.
 
