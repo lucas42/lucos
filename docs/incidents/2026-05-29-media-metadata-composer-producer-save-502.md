@@ -38,6 +38,8 @@ Saving a track that **sets a composer or producer tag** consistently fails with 
 
 This is unique to composer/producer — the other eolas-URI predicates (offence, theme_tune, soundtrack, and memory as proposed in `lucas42/lucos_media_metadata_api#277`) are "link-only": they wire **no** resolver, so their saves make zero eolas calls. composer/producer are the lone outlier because they added create-on-the-fly resolvers.
 
+> **Note (added on refinement):** the outlier status is **intentional, not an oversight** — lucas42 chose **inline-create** for composer/producer (`lucas42/lucos_media_metadata_manager#309`, enabled by `lucas42/lucos_search_component#176`): type a name → "Add…" → the Person is created in eolas on save. So "make composer/producer link-only like the others" (Direction 2 in the original Follow-up actions) is **ruled out** — it would undo that product decision. The durable fix instead keeps create-on-the-fly but makes the eolas dependency resilient (see the architect's design on `#278`).
+
 ### Contributing factor — eolas's bulk endpoint is slow
 
 eolas's `/metadata/all/data/` endpoint is ~23s (full-dataset aggregation; `lucas42/lucos_eolas#283`). Notably, the URI→name resolver path `fetchEolasName(uri)` is implemented as `fetchEolasNames([uri])` — it fetches the **entire eolas dataset** to resolve a single name, so that sub-path inherits the 23s latency. eolas's per-entity paths are fast (create 43ms, list 0.22s); only the bulk aggregation is slow. The slowness may have been aggravated by #274 adding ~816 Person entities to that payload (unconfirmed — raised in #283).
@@ -65,7 +67,7 @@ The manager renders "Error updating track in API — API returned unexpected sta
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Make the composer/producer save-path eolas dependency resilient (short timeout + accept-name-and-reconcile-later, or drop create-on-the-fly for URI-via-search, or async) — design routed to architect | `lucas42/lucos_media_metadata_api#278` | Open |
+| Make the composer/producer save-path eolas dependency resilient — design now posted on `#278` by the architect: **L1** drop the save-path eolas timeout 30s→2–3s (and make `fetchEolasName` a single-entity lookup, not a full bulk-dataset fetch); **L2** make URI→name backfill non-fatal (store URI, let reconcile converge the name); **L3** the create-on-the-fly fail-fast-vs-defer trade-off flagged for lucas42. ("Drop create-on-the-fly / link-only" is **ruled out** — conflicts with the inline-create product decision in `lucas42/lucos_media_metadata_manager#309`.) | `lucas42/lucos_media_metadata_api#278` | Open (design posted) |
 | eolas `/metadata/all/data/` bulk-endpoint slowness (~23s; also no-ops the `reconcile_tag_names` job; `fetchEolasName` resolves a single URI through it) | `lucas42/lucos_eolas#283` | Open (triaged) |
 | Manager renders "status code 400" when the real upstream status is 502 — should surface the actual status | To be ticketed by team-lead on `lucos_media_metadata_manager` | Pending |
 | Confirm 22829 (and composer/producer saves generally) succeed once #278/#283 land | This report | UNRESOLVED — pending fix |
