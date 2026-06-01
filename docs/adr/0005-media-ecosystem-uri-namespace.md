@@ -1,7 +1,7 @@
 # ADR-0005: Media-ecosystem URI namespace
 
 **Date:** 2026-05-19
-**Status:** Proposed
+**Status:** Accepted
 **Discussion:** https://github.com/lucas42/lucos/issues/163
 
 ## Context
