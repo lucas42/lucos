@@ -2,6 +2,7 @@
 
 **Date:** 2026-05-22
 **Status:** Accepted
+**Amended:** 2026-06-01 — per-host enforce control (see Amendment at end)
 **Discussion:** https://github.com/lucas42/lucos/issues/169
 
 ## Context
@@ -204,3 +205,57 @@ Sequenced so the most-impactful and lowest-risk changes go first. Each is a sepa
 - `lucas42/lucos_monitoring` commit `ab9f6b9` (2024-04-29) — original addition of `network_mode: host` for IPv6 support.
 - `lucas42/lucos_time` commit `2d36838` (2024-04-29) — same.
 - `lucas42/lucos_configy` `README.md` — current `http_port` / `hosts` / `domain` schema; `public_ports` is the new field this ADR depends on.
+
+## Amendment (2026-06-01) — per-host enforce control
+
+### Context for the amendment
+
+The body above describes the firewall reading `public_ports` from configy and progressing from "dry-run" to "enforce", but is silent on *how* enforce mode is controlled per host. The implicit assumption was a single `DRY_RUN` environment variable on the `lucos_firewall` container.
+
+Two things broke that assumption:
+
+1. **The rollout was re-sequenced** to enforce `xwing → salvare → avalon`, flipping each host to enforce **independently and at different times**, each only after its own ≥7-day dry-run is reviewed clean (see `lucas42/lucos#182`). The original follow-up actions 7–11 (avalon-first, single-host dry-run) are superseded by that reorder; `lucas42/lucos#182` is the authoritative rollout sequence.
+2. **A single env var cannot express per-host mode.** `DRY_RUN` is populated from `lucos_creds`, which is keyed by `(system, environment)` — *host* is not a dimension — and the same `docker-compose.yml` deploys to all three hosts. So an env-borne flag is necessarily identical on xwing, salvare and avalon; flipping it flips all three at once, which the staged rollout cannot tolerate.
+
+Full options analysis: architect assessment on `lucas42/lucos#182` (2026-06-01).
+
+### Decision
+
+**Per-host enforce mode is a per-host fact in `lucos_configy`, not an environment variable.**
+
+- **Source of truth.** A new per-host boolean `firewall_enforce` on the configy `Host` model (`config/hosts.yaml`), defaulting to **`false` = dry-run (log-only)**. A host enforces if and only if it explicitly declares `firewall_enforce: true`. Absence ⇒ the safe state. (Implemented in `lucas42/lucos_configy#203`, which also adds a `/hosts/{host}` endpoint exposing the host record.)
+- **Identity vs. mode.** The firewall already derives its host identity from `HOSTDOMAIN` (injected per-host by the deploy orb; first DNS label → configy host key) and already polls configy per-host for `public_ports`. It reads `firewall_enforce` for the same host key from the same source. `HOSTDOMAIN` supplies *identity* (static, deploy-time); configy supplies *mode* (per-host, changeable at runtime). The two compose — neither alone is sufficient. (Implemented in `lucas42/lucos_firewall#9`.)
+- **Flipping a host** is a one-line, version-controlled, PR-reviewed edit to `hosts.yaml`, picked up by the firewall's existing configy poll loop within one interval. No redeploy. The shipped timed auto-rollback remains the safety net on the enforce transition.
+- **The `DRY_RUN` env var is retained only as a transition fallback and local-dev override**, subordinate to the configy value once present.
+
+This keeps the firewall's mode and its port list reading from the **same single source of truth** (configy), consistent with the ADR's core principle that firewall state cannot go stale relative to the deployed estate.
+
+### Fail-safe contract (configy ↔ firewall)
+
+Because mode now also derives from configy, a configy fault must never *change* a host's behaviour into a riskier state:
+
+- **Hold last-known-good across a configy outage.** On a failed poll, the firewall keeps applying the last successfully-fetched `(mode, ports)` pair. It does **not** re-derive mode from a failed fetch. (Composes with the existing configy-unreachable auto-rollback in the firewall.)
+- **Cold start with configy unreachable and no cache ⇒ dry-run (log-only).** When mode is genuinely unknown, default to the safe state. The firewall must never enforce a mode it couldn't read against a port list it also couldn't read — that is the partial-ruleset lockout path. Unknown ⇒ safest.
+
+### Consequences
+
+**Positive**
+
+- Per-host flips are reviewable, auditable, version-controlled config edits — no redeploy, no per-host env injection, no second source of truth.
+- Mode and port list share one source of truth (configy), already a hard runtime dependency of the firewall; no new dependency class is introduced.
+- The default (`firewall_enforce` absent ⇒ dry-run) is fail-safe: a forgotten or mistyped flag leaves a host logging-only, never locked out.
+
+**Negative**
+
+- Enforce mode is now coupled to configy availability as well as the port list. The fail-safe contract above bounds the blast radius, but it does mean a host's *intended* enforce posture is only realised while configy is reachable (mitigated by last-known-good caching).
+- A host that should be enforcing but whose flag was never set will sit silently in dry-run. This is observable (it logs would-deny lines and never applies them) and is caught by the rollout's per-host enforce-verification step, but it is a quiet failure mode rather than a loud one.
+
+### Superseded
+
+- Follow-up actions 7, 8, 10 and 11 in the body (avalon-first dry-run then per-host enforce deploys) are superseded by the parallel-dry-run-then-`xwing → salvare → avalon`-enforce sequence in `lucas42/lucos#182`.
+
+### Amendment references
+
+- `lucas42/lucos#182` — progressive deployment ticket; authoritative rollout sequence and the architect assessment that produced this amendment.
+- `lucas42/lucos_configy#203` — `firewall_enforce` field + `/hosts/{host}` endpoint.
+- `lucas42/lucos_firewall#9` — firewall reads enforce-mode from configy, with the fail-safe contract above.
