@@ -2,21 +2,15 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when setting the Priority field during triage.
 
-**Last updated**: 2026-05-22
+**Last updated**: 2026-06-01
 
 ---
 
 ## Active priorities (in order)
 
-### 1. Media metadata migration to lucos_eolas
+### 1. lucos_firewall
 
-A natural extension of the completed `lucos_media` v2 → v3 migration. The next phase moves non-media-specific metadata out of `lucos_media_metadata_api` and into `lucos_eolas` as the canonical home — people (composers, producers, artists), places, content-warning classifications, and other cross-domain entities. The metadata API stays focused on media-specific concerns.
-
-In-flight tickets sit across `lucos_media_metadata_api` (e.g. Person-typed tags, memory, offence, theme_tune/soundtrack predicates, URI rewrite on source change) and `lucos_eolas` (new types as needed). Issues progressing this work should be Priority = High.
-
-### 2. lucos_firewall
-
-Design and rollout of the proposed `lucos_firewall` service, per ADR-0007. Covers the bootstrap of the new repo, the `public_ports` schema and population in `lucos_configy`, RNDC tightening in `lucos_dns`, and the progressive deployment to avalon → xwing → salvare. Issues that progress the firewall design or its rollout should be Priority = High.
+Design and rollout of the `lucos_firewall` service, per ADR-0007 — the current top priority. The repo is bootstrapped and the `public_ports` schema has landed in `lucos_configy`. Remaining work: populating `public_ports` for the public-facing services, implementing the firewall container (Go) that generates and applies iptables/ip6tables rules from configy, RNDC tightening in `lucos_dns`, and the progressive deployment to avalon → xwing → salvare. Issues that progress the firewall implementation or its rollout should be Priority = High.
 
 ---
 
