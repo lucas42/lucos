@@ -1,7 +1,7 @@
 # ADR-0010: Model the primary and secondary DNS nameservers as separate systems in separate repos
 
 **Date:** 2026-06-05
-**Status:** Proposed
+**Status:** Accepted
 **Discussion:** https://github.com/lucas42/lucos/issues/213
 **Revises:** the implementation sketch of [ADR-0003](0003-secondary-dns-nameserver.md) (lucas42/lucos#110)
 
