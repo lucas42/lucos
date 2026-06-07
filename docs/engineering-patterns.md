@@ -2,7 +2,7 @@
 
 A reference for how lucOS systems are actually built and operated. This document describes the conventions, patterns, and standards in use across the ecosystem -- not aspirations, but reality as it stands today.
 
-Last updated: 2026-05-13
+Last updated: 2026-06-07
 
 ---
 
@@ -113,6 +113,52 @@ Pass-through variables (no `=`) are sourced from the host environment or `.env` 
 Named volumes must be declared in both the service's `volumes:` mount and the top-level `volumes:` section. Anonymous volumes are avoided because they lack Docker Compose project labels, which breaks `lucos_backups` monitoring.
 
 Every named volume must also be registered in `lucos_configy/config/volumes.yaml` with a description and `recreate_effort` value (`automatic`, `small`, `tolerable`, `considerable`, `huge`, or `remote`).
+
+### Scheduled jobs (supercronic)
+
+Containers that run on a schedule use [supercronic](https://github.com/aptible/supercronic) — a container-native cron runner that propagates the container environment to jobs natively, logs stdout/stderr to Docker logs, and uses standard crontab syntax.
+
+**Dockerfile pattern:**
+
+Install supercronic with architecture-specific sha1sum verification, pinned to a specific release:
+
+```dockerfile
+ARG TARGETARCH
+RUN set -e; \
+    case "$TARGETARCH" in \
+        amd64) sha1sum="5bcefed628e32adc08e32634db2d10e9230dbca0" ;; \
+        arm64) sha1sum="639ab81a72771990790df7ee87d9acfe88e5fa83" ;; \
+        *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    wget -qO /usr/local/bin/supercronic \
+        "https://github.com/aptible/supercronic/releases/download/v0.2.46/supercronic-linux-${TARGETARCH}"; \
+    echo "${sha1sum}  /usr/local/bin/supercronic" | sha1sum -c -; \
+    chmod +x /usr/local/bin/supercronic
+```
+
+Create a `crontab` file in the repo using standard cron syntax:
+
+```
+15 04 * * * /path/to/job.sh
+```
+
+Use supercronic as the container entrypoint:
+
+```dockerfile
+COPY crontab /crontab
+CMD ["supercronic", "/crontab"]
+```
+
+**Containers with an additional long-running process** (e.g. an HTTP server alongside cron jobs) use a `startup.sh` that forks supercronic in the background and then starts the main process:
+
+```bash
+#!/bin/sh
+set -e
+supercronic /crontab &
+exec pipenv run python -u server.py
+```
+
+**Upgrading supercronic:** Update the version string and both sha1sums together; fetch the sha1sums from the release assets at `https://github.com/aptible/supercronic/releases`.
 
 ---
 
