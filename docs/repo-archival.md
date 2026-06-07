@@ -97,7 +97,7 @@ These steps apply to all repo types, not just deployed services.
 
 ## Phase 4: Archive the repository
 
-- [ ] **Verify all open issues are closed, including any archival tracking issue.** GitHub archives make repos fully read-only — posting comments on issues (not just creating or reopening them) also returns 403 after archiving. Post any final completion comments (e.g. the summary comment the sysadmin persona requires before reporting back to the coordinator) **before** calling the archive API.
+- [ ] **Verify all open issues are closed, including any archival tracking issue.** GitHub archives make repos entirely read-only via the API — creating, reopening, commenting on, and **closing** issues all return 403 after archiving. Post any final completion comments and close the tracking issue **before** calling the archive API. If you realise you need to close an issue after archiving, temporarily unarchive (`PATCH /repos/{owner}/{repo}` with `archived: false`), perform the action, then re-archive.
 - [ ] **Verify the project board is clean.** Items referencing archived-repo issues can become stale.
 - [ ] **Archive the repo on GitHub.** Settings → Danger Zone → Archive this repository.
 
