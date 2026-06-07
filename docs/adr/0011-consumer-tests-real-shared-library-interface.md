@@ -1,7 +1,7 @@
 # ADR-0011: Consumer tests must exercise the real interface of internal shared libraries
 
 **Date:** 2026-06-06
-**Status:** Proposed
+**Status:** Accepted
 **Discussion:** https://github.com/lucas42/lucos/issues/219
 
 ## Context
