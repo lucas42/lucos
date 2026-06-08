@@ -38,7 +38,7 @@ So the redundancy was mid-construction, and two separate in-flight setup defects
 | ~23:33 | `lucos_dns_bind` on avalon restarts as part of the #102 deploy and loads the generated `l42.eu` from the shared volume — which still holds the **stale, pre-#102** file. |
 | 23:34:31 | BIND logs `dns2.l42.eu: CNAME and other data` → `zone l42.eu/IN: not loaded due to errors`. The apex is now absent; with no prior in-memory copy and no last-known-good, every `l42.eu` name SERVFAILs. (Other zones — `s.l42.eu`, `lukeblaney.co.uk`, etc. — load fine.) |
 | ~23:36 | Auto-merge on `lucas42/lucos_repos#410` skips — it can't resolve `configy.l42.eu` to read supervision status. lucos-code-reviewer notices the "configy flap". |
-| ~23:38 | `lucas42/lucos_dns#103` CI fails on the CircleCI runners — `getaddrinfo creds.l42.eu`/`repos.l42.eu` resolution failures (a second independent vantage point confirming estate-wide DNS loss). |
+| ~23:38 | `lucas42/lucos_dns#103` CI fails from DNS resolution — convention-check (GitHub Actions, 23:38:00–23:38:04, couldn't resolve `repos.l42.eu`) and CircleCI build #669 (`getaddrinfo creds.l42.eu`). A second independent vantage point confirming estate-wide DNS loss. |
 | 23:41:44 | `lucas42/lucos_dns#103` (the TSIG key-name fix) approved by lucos-code-reviewer. |
 | ~23:44 | team-lead independently verifies all `l42.eu` names fail to resolve while github.com is fine, and escalates as a production incident. SRE investigation begins. |
 | ~23:45–23:47 | SRE traces the `.eu` delegation to avalon, finds BIND healthy but SERVFAILing its own zone, and locates the `CNAME and other data` load error. Broken zone file backed up. |
@@ -46,6 +46,8 @@ So the redundancy was mid-construction, and two separate in-flight setup defects
 | ~23:49–23:51 | Recovery verified: public resolvers (8.8.8.8, 1.1.1.1) resolve; `/_info` → HTTP 200 across services; 3 consecutive clean probes. |
 | 23:51:19 | `lucas42/lucos_repos#410` merged after re-approval (its stall was a symptom of the outage, now cleared). |
 | 23:57:45 | `lucos_dns_sync` runs again now that configy is reachable and regenerates `l42.eu` (serial 1780876665) using the **already-fixed** generator — it loads cleanly, with `dns2` as A+AAAA glue to xwing and no CNAME. Confirms the broken file was stale and the generator is correct. |
+| 00:03:41 (06-08) | `lucas42/lucos_dns#103` merged; avalon redeploys with the corrected TSIG key name `lucos-tsig`. |
+| 00:06:15 (06-08) | Post-redeploy BIND loads serial 1780876665 and xwing's secondary now transfers all five zones cleanly with `lucos-tsig`. Verified externally: `dig l42.eu SOA @152.37.104.10` → NOERROR, serial matches the primary. **The estate finally has working DNS redundancy.** |
 
 ---
 
@@ -87,11 +89,11 @@ BIND retains a zone's previous contents in memory if a *reload* fails — but th
 
 ### Contributing factor: redundancy not yet functional (confirmed) — the amplifier
 
-The secondary being built that evening could not yet serve anything: every AXFR/IXFR from the primary failed with `tsig indicates error`, because the primary signs transfers with a key named `tsig-transfer` while the secondary expects `lucos-tsig` (BIND key names must match exactly; the *secret* matched — it was purely the name). xwing therefore held none of the zones. Tracked, with a one-line fix, in `lucas42/lucos_dns#103`. Had the secondary been functional, avalon's broken apex would have been a degradation, not an outage. This is the in-flight-setup defect referenced in the Background section, not a pre-existing neglected gap.
+The secondary being built that evening could not yet serve anything: every AXFR/IXFR from the primary failed with `tsig indicates error`, because the primary signs transfers with a key named `tsig-transfer` while the secondary expects `lucos-tsig` (BIND key names must match exactly; the *secret* matched — it was purely the name). xwing therefore held none of the zones. Tracked, with a one-line fix, in `lucas42/lucos_dns#103`. Had the secondary been functional, avalon's broken apex would have been a degradation, not an outage. This is the in-flight-setup defect referenced in the Background section, not a pre-existing neglected gap. **Resolved post-incident:** `lucas42/lucos_dns#103` merged 00:03:41Z; after the redeploy, xwing transfers cleanly with `lucos-tsig` and now answers authoritatively for all five zones (verified: `dig l42.eu SOA @152.37.104.10` → NOERROR, serial 1780876665 matching the primary). The estate now has a functioning secondary — though see the next factor for why that is not yet *externally* sufficient.
 
 ### Contributing factor: the off-site nameserver isn't off-site (confirmed)
 
-Even with a functioning xwing secondary, the externally-visible resilience is weaker than it looks: the `.eu` parent delegation for `l42.eu` lists `dns.l42.eu` and `ns1.lukeblaney.co.uk` — but `ns1.lukeblaney.co.uk` is a CNAME to `dns.l42.eu` (avalon). So both delegation nameservers resolve to the same host, and `dns2.l42.eu` (xwing) is not in the parent delegation at all. The "off-site" name is also circularly dependent (it lives under `lukeblaney.co.uk`, which is served by the lucos primary). Tracked in `lucas42/lucos_dns#107`.
+Even with a functioning xwing secondary, the externally-visible resilience is weaker than it looks: the `.eu` parent delegation for `l42.eu` lists `dns.l42.eu` and `ns1.lukeblaney.co.uk` — but `ns1.lukeblaney.co.uk` is a CNAME to `dns.l42.eu` (avalon). So both delegation nameservers resolve to the same host, and `dns2.l42.eu` (xwing) is not in the parent delegation at all. The "off-site" name is also circularly dependent (it lives under `lukeblaney.co.uk`, which is served by the lucos primary). So although `lucas42/lucos_dns#103` made the secondary functional internally, external resolvers priming from `.eu` still only ever reach avalon. Closing this requires the registrar-side NS/glue change tracked in `lucas42/lucos#111` (which should yield a genuinely avalon-independent second NS, not just add `dns2` alongside an avalon-pointing `ns1`); the SRE follow-up `lucas42/lucos_dns#107` captures the finding and is to be reconciled with `lucas42/lucos#111`.
 
 ### Contributing factor: detection gap (confirmed)
 
@@ -120,8 +122,8 @@ Operational dead-ends during the fix:
 | Action | Issue / PR | Status |
 |---|---|---|
 | Harden zone generation: `named-checkzone` before install + keep a last-known-good so a malformed/stale zone can never take down the apex on (re)start | `lucas42/lucos_dns#104` | Open (systemic fix — the key lesson) |
-| Fix the TSIG key-*name* mismatch so the secondary can transfer zones and provide real redundancy (`tsig-transfer` → `lucos-tsig`) | `lucas42/lucos_dns#103` | Open PR — approved; required checks green; on-disk zone confirmed valid so the redeploy is safe; awaits lucas42's merge (supervised repo) |
-| Give `l42.eu` genuine off-site resilience: put xwing in the `.eu` delegation with glue; stop the off-site NS being a CNAME to / circularly dependent on the primary | `lucas42/lucos_dns#107` | Open |
+| Fix the TSIG key-*name* mismatch so the secondary can transfer zones and provide real redundancy (`tsig-transfer` → `lucos-tsig`) | `lucas42/lucos_dns#103` | Done — merged 00:03:41Z; redeploy verified, xwing now slaving all five zones (l42.eu serial 1780876665 matches the primary, verified externally) |
+| Give `l42.eu` genuine off-site resilience: put xwing in the `.eu` delegation with glue; stop the off-site NS being a CNAME to / circularly dependent on the primary | `lucas42/lucos_dns#107` (reconcile with `lucas42/lucos#111`, the registrar NS/glue change) | Open |
 | Harden the auto-merge workflow's fail-closed behaviour to be loud rather than silent on a transient supervision-lookup failure | To be filed by lucos-architect (workflow-determinism design) | Pending — architect to file + send URL for linking |
 | Auto-merge stall on `lucas42/lucos_repos#410` during the outage | `lucas42/lucos_repos#410` | Done — merged 23:51:19Z after re-approval (symptom, self-resolved with DNS) |
 | Consider whether the alerting path should tolerate estate DNS loss (monitoring was inside the blast radius) | Not yet filed — pending team-lead/architect input | Open (to discuss) |
