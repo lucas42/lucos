@@ -82,7 +82,7 @@ lucos_locations:
 ```
 *filter
 :INPUT DROP [0:0]
-:FORWARD DROP [0:0]
+:FORWARD ACCEPT [0:0]
 :OUTPUT ACCEPT [0:0]
 :DOCKER-USER - [0:0]
 
@@ -114,6 +114,8 @@ COMMIT
 ```
 
 Both `INPUT` and `DOCKER-USER` are populated. `INPUT` catches host-network containers and host-process listeners. `DOCKER-USER` is the chain Docker explicitly leaves alone for user rules and catches Docker-forwarded (port-published) traffic. Docker's own chains (`DOCKER`, `DOCKER-ISOLATION-*`) are not touched.
+
+The `FORWARD` policy is **ACCEPT**, not `DROP`: Docker owns the `FORWARD` chain and depends on forwarding being open for container traffic, so default-deny for Docker-published ports is enforced by the terminal `DROP` in `DOCKER-USER` — not by the `FORWARD` policy. The estate's default-deny therefore lives in two places (the `INPUT` policy `DROP` for host-network/host-process listeners, and the `DOCKER-USER` terminal `DROP` for Docker-published ports), never in `FORWARD`. _(An earlier revision of this skeleton mistakenly showed `:FORWARD DROP`; corrected 2026-06-08 to match the shipped `lucos_firewall` implementation.)_
 
 **Host placement.** `lucos_firewall` runs on `avalon`, `xwing`, and `salvare` — the three active internet-facing hosts. `salvare` has no `lucos_router` deployment, so its allow-list will not include 80/443 unless something else declares them; the firewall there is correspondingly tighter.
 
@@ -314,7 +316,7 @@ This pattern applies to both the IPv4 (`iptables`) and IPv6 (`ip6tables`) rulese
 
 **Negative / scope note**
 
-- The exemption is intentionally broader than ADR-0007's original Scope wording ("within a Docker Compose stack"). It also covers cross-stack ICC. This is the accepted design for two reasons: (a) there is no trusted internal network on the lucos estate — see Layer 1 and the identity-not-from-topology principle (`lucas42/lucos#132`); (b) expressing same-stack-only exemption via `-i` alone would require fragile per-bridge rules (`-i br-aaaa -o br-aaaa`) that break whenever a stack is recreated and gets a new bridge ID. The security model for cross-stack traffic relies on application-level auth (Layer 1), not host-firewall rules.
+- The exemption is intentionally broader than ADR-0007's original Scope wording ("within a Docker Compose stack"). It also covers cross-stack ICC. This is the accepted design (signed off by lucas42, 2026-06-08) for two reasons: (a) there is no trusted internal network on the lucos estate — see Layer 1 and the identity-not-from-topology principle (`lucas42/lucos#132`); (b) expressing same-stack-only exemption via `-i` alone would require fragile per-bridge rules (`-i br-aaaa -o br-aaaa`) that break whenever a stack is recreated and gets a new bridge ID. The security model for cross-stack traffic relies on application-level auth (Layer 1), not host-firewall rules.
 
 ### Amendment 2 references
 
