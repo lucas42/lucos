@@ -124,7 +124,7 @@ Operational dead-ends during the fix:
 | Harden zone generation: `named-checkzone` before install + keep a last-known-good so a malformed/stale zone can never take down the apex on (re)start | `lucas42/lucos_dns#104` | Open (systemic fix — the key lesson) |
 | Fix the TSIG key-*name* mismatch so the secondary can transfer zones and provide real redundancy (`tsig-transfer` → `lucos-tsig`) | `lucas42/lucos_dns#103` | Done — merged 00:03:41Z; redeploy verified, xwing now slaving all five zones (l42.eu serial 1780876665 matches the primary, verified externally) |
 | Give `l42.eu` genuine off-site resilience: put xwing in the `.eu` delegation with glue; stop the off-site NS being a CNAME to / circularly dependent on the primary | `lucas42/lucos_dns#107` (reconcile with `lucas42/lucos#111`, the registrar NS/glue change) | Open |
-| Harden the auto-merge workflow's fail-closed behaviour to be loud rather than silent on a transient supervision-lookup failure | To be filed by lucos-architect (workflow-determinism design) | Pending — architect to file + send URL for linking |
+| Harden the auto-merge workflow's fail-closed behaviour to be loud-and-retried rather than silent on a transient supervision-lookup failure (`curl … \|\| echo '{}'` + `// false` collapses "couldn't determine" into "supervised") | `lucas42/.github#68` | Open |
 | Auto-merge stall on `lucas42/lucos_repos#410` during the outage | `lucas42/lucos_repos#410` | Done — merged 23:51:19Z after re-approval (symptom, self-resolved with DNS) |
 | Consider whether the alerting path should tolerate estate DNS loss (monitoring was inside the blast radius) | Not yet filed — pending team-lead/architect input | Open (to discuss) |
 
