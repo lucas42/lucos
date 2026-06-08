@@ -283,7 +283,9 @@ The risk is confirmed on avalon, which is the last host to enforce under `lucas4
 
 **Add `-i br+ -j RETURN` and `-i docker0 -j RETURN` rules to the DOCKER-USER chain, positioned after the ESTABLISHED/RELATED ACCEPT and before the public-port ACCEPT rules.**
 
-Packets ingressing from a Docker bridge interface match one of these rules and are returned to the FORWARD chain, where Docker's own ICC rules take effect. Only packets arriving from non-bridge interfaces (public-facing `eth0`, `bond0`, etc.) fall through to the public-port allow-list and the terminal DROP.
+The `-i` flag in iptables matches the **ingress interface** — the interface a packet was *received on* by the host kernel. For any container-originated traffic, this is always the **source** container's bridge, regardless of where the destination container lives. A packet from stack-A (`br-aaaa`) destined for stack-B (`br-bbbb`) is received by the kernel on `br-aaaa`, and `-i br-aaaa` matches `-i br+`. The RETURN therefore fires for **all** bridge-origin inter-container traffic: same-stack (same Compose project) and cross-stack (different Compose projects on the same host) alike.
+
+Only packets arriving from a non-bridge interface — a public-facing `eth0`, `bond0`, etc. — fall through to the public-port allow-list and the terminal DROP.
 
 The `-i br+` wildcard matches any iptables interface name beginning with `br` — this covers the `br-xxxxxxxx` naming pattern used by Docker Compose for custom bridge networks. The `-i docker0` rule covers the default Docker bridge explicitly (its name does not match `br+`).
 
@@ -306,13 +308,13 @@ This pattern applies to both the IPv4 (`iptables`) and IPv6 (`ip6tables`) rulese
 
 **Positive**
 
-- The implementation now matches the scope exclusion the ADR already intended: intra-stack ICC is policed solely by Compose network isolation, not by the host firewall.
+- All bridge-origin inter-container traffic — both same-stack (same Compose project) and cross-stack (different Compose projects on the same host) — is returned to Docker's own FORWARD rules and is not dropped by `lucos_firewall`. The host firewall polices external-origin traffic only.
 - The fix is a no-op on hosts where `br_netfilter` is not loaded (xwing, salvare) — RETURN rules match bridge-interface traffic that Docker already bypasses iptables for, so no behaviour change on those hosts.
 - No Compose stack networking changes required; no redeploy of application services.
 
-**Negative**
+**Negative / scope note**
 
-- Cross-bridge ICC (different Compose projects, different bridge networks, same host) does NOT receive a RETURN — that traffic goes through L3 FORWARD → DOCKER-USER, is not on a `br+`-named ingress, and is subject to the DROP if it targets a non-declared port. This is intentional: cross-stack traffic is not "within a Docker Compose stack" and therefore outside the scope exclusion.
+- The exemption is intentionally broader than ADR-0007's original Scope wording ("within a Docker Compose stack"). It also covers cross-stack ICC. This is the accepted design for two reasons: (a) there is no trusted internal network on the lucos estate — see Layer 1 and the identity-not-from-topology principle (`lucas42/lucos#132`); (b) expressing same-stack-only exemption via `-i` alone would require fragile per-bridge rules (`-i br-aaaa -o br-aaaa`) that break whenever a stack is recreated and gets a new bridge ID. The security model for cross-stack traffic relies on application-level auth (Layer 1), not host-firewall rules.
 
 ### Amendment 2 references
 
