@@ -31,14 +31,20 @@ Two distinct faults:
 Set the `.eu` parent delegation for `l42.eu` to **two distinct hosts, each reachable independently of `l42.eu`'s own servers via registry-served glue**:
 
 - Delegation NS set = **{ `dns.l42.eu`, `dns2.l42.eu` }** — `avalon` and `xwing`, not `avalon` twice.
-- Glue at the `.eu` registry: `dns.l42.eu` → `avalon` A/AAAA; `dns2.l42.eu` → `xwing` A/AAAA.
+- Address-record glue at the `.eu` registry for both `dns.l42.eu` (→ `avalon`) and `dns2.l42.eu` (→ `xwing`). **The accepted current end-state is IPv4 (A-record) glue for both** (see *Realized end-state* below); IPv6 (AAAA) glue is a deferred follow-up, not a precondition for the redundancy goal.
 - **Remove `ns1.lukeblaney.co.uk` from the delegation** and retire the CNAME-as-NS arrangement.
+
+### Realized end-state (2026-06-08)
+
+As verified by lucos-site-reliability, the `.eu` delegation now lists `{ dns.l42.eu, dns2.l42.eu }` with **IPv4 (A-record) glue for both** and `ns1.lukeblaney.co.uk` removed; `xwing` answers `l42.eu` authoritatively via the parent glue, independent of `avalon` (independence test passes). The off-site-resilience goal is achieved and lucas42/lucos#111 is closed.
+
+The glue is **IPv4-only** because the registrar would not persist IPv6 glue (a registrar-side IPv6-glue-save problem observed 2026-06-08). This is symmetric — `dns.l42.eu` has no AAAA glue at `.eu` either, and never did. **IPv4-only glue is the accepted current end-state, not an unmet target:** it delivers the redundancy goal for IPv4 and dual-stack resolvers. The single uncovered case is a **pure-IPv6-only resolver on a cold cache during an `avalon` outage**, which cannot bootstrap `l42.eu` from the parent — rare, and pre-existing rather than introduced by this work. Adding AAAA glue for both names (full dual-stack parent glue) is deferred until the registrar IPv6 problem is resolved, tracked in **lucas42/lucos_dns#107**.
 
 ### Rationale: glue, not an independent name, provides outage-survivable resolvability
 
 The key insight is that the circular dependency disabling `ns1.lukeblaney.co.uk` is a property of *being an unglued, out-of-bailiwick CNAME*, **not** of being named under `l42.eu`.
 
-`dns2.l42.eu` is **in-bailiwick** (under `l42.eu`), so the `.eu` registry **must** carry glue (A/AAAA) for it. That glue is served by the `.eu` registry — wholly independent of `avalon` and `xwing`. A resolver priming `l42.eu` obtains both nameservers' addresses directly from `.eu` and **never needs to resolve `dns2.l42.eu` by name**. The circular dependency therefore does not arise for an in-bailiwick glued name.
+`dns2.l42.eu` is **in-bailiwick** (under `l42.eu`), so the `.eu` registry **must** carry address-record glue for it. That glue is served by the `.eu` registry — wholly independent of `avalon` and `xwing`. A resolver priming `l42.eu` obtains both nameservers' addresses directly from `.eu` and **never needs to resolve `dns2.l42.eu` by name**. The circular dependency therefore does not arise for an in-bailiwick glued name.
 
 **Failure-mode check against 2026-06-07:** with both names glued at `.eu`, a resolver priming `l42.eu` receives both glue addresses from `.eu`, queries `avalon` (SERVFAILing on the broken apex) *and* `xwing` (serving last-known-good), and gets a valid answer from `xwing`. Resolution never depends on `l42.eu`'s own servers being up — which is the external resilience ADR-0003 intended.
 
@@ -54,7 +60,7 @@ The registrar change (lucas42/lucos#111) must land **only after**:
 2. TSIG-authenticated transfer works (lucas42/lucos_dns#103), and
 3. `xwing` is verified serving correct answers for all five zones.
 
-Adding `dns2.l42.eu` to the delegation before that would hand external resolvers a glue record for a server that SERVFAILs, degrading rather than improving availability. lucas42/lucos#111 is already blocked on this ADR / lucas42/lucos_dns#107.
+Adding `dns2.l42.eu` to the delegation before that would hand external resolvers a glue record for a server that SERVFAILs, degrading rather than improving availability. lucas42/lucos#111 tracked this registrar change; it was executed and closed on 2026-06-08 (see *Realized end-state*).
 
 **Registrar mechanics — the `.eu` in-bailiwick step.** Because `dns2.l42.eu` is in-bailiwick for `l42.eu`, the `.eu` registry requires it to be registered as a **glue host object** (the name plus `xwing`'s A/AAAA) *before* it can be attached to the `l42.eu` delegation as an NS. The `.uk`/`.co.uk` registries do **not** need this for it — `dns2.l42.eu` is out-of-bailiwick there, so it attaches as a plain NS name with no glue. lucas42/lucos#111 must therefore create the `.eu` glue host object first; until it exists, attaching `dns2.l42.eu` to the `l42.eu` delegation will be rejected. (Observed 2026-06-08 by lucos-site-reliability: the `.uk`/`.co.uk` zones were already updated to `{ dns, dns2 }`, while `l42.eu` still listed `{ dns.l42.eu, ns1.lukeblaney.co.uk }` — consistent with this `.eu`-specific glue-host-object step being the outstanding one, though registry propagation lag could not be fully excluded.) This is an implementation sequencing detail, not a change to the target topology above.
 
@@ -90,4 +96,4 @@ The removal of `ns1.lukeblaney.co.uk` carries a pre-flight check (see Follow-up 
 (The coordinator owns labels, priority, and board placement.)
 
 - **lucas42/lucos#111 (registrar NS + glue)** — execute this delegation (`{ dns.l42.eu, dns2.l42.eu }` + glue, drop `ns1.lukeblaney.co.uk`) once the sequencing preconditions are met. Already tracked and blocked on this ADR; no new issue needed. Its scope should explicitly include the `ns1.lukeblaney.co.uk` removal pre-flight (confirm no other referents — other zones' NS sets, monitoring — before deleting).
-- **lucas42/lucos#227 (AAAA glue at `.eu`)** — low-priority residual. As realized on 2026-06-08 (verified by lucos-site-reliability), the `.eu` glue is **IPv4-only** for both `dns.l42.eu` and `dns2.l42.eu`; the A-**and**-AAAA target above is not yet met because the registrar would not persist IPv6 glue. The IPv4 realization meets the redundancy goal for IPv4 and dual-stack resolvers — only a pure-IPv6 resolver on a cold cache during an `avalon` outage is uncovered, which is rare and **pre-existing** (`dns.l42.eu` never had AAAA glue). Full dual-stack parent glue is deferred until the registrar IPv6-glue-save problem is resolved.
+- **lucas42/lucos_dns#107 (AAAA glue at `.eu`)** — low-priority deferred follow-up (its re-scoped tracking home). Add IPv6 (AAAA) glue at `.eu` for both `dns.l42.eu` and `dns2.l42.eu`, giving full dual-stack parent glue, once the registrar IPv6-glue-save problem (observed 2026-06-08) is resolved. See *Realized end-state* — IPv4-only is the accepted interim, so this closes the residual pure-IPv6 cold-cache gap rather than unblocking the redundancy goal (already met).
