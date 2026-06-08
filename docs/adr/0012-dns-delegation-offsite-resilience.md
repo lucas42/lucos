@@ -56,6 +56,8 @@ The registrar change (lucas42/lucos#111) must land **only after**:
 
 Adding `dns2.l42.eu` to the delegation before that would hand external resolvers a glue record for a server that SERVFAILs, degrading rather than improving availability. lucas42/lucos#111 is already blocked on this ADR / lucas42/lucos_dns#107.
 
+**Registrar mechanics — the `.eu` in-bailiwick step.** Because `dns2.l42.eu` is in-bailiwick for `l42.eu`, the `.eu` registry requires it to be registered as a **glue host object** (the name plus `xwing`'s A/AAAA) *before* it can be attached to the `l42.eu` delegation as an NS. The `.uk`/`.co.uk` registries do **not** need this for it — `dns2.l42.eu` is out-of-bailiwick there, so it attaches as a plain NS name with no glue. lucas42/lucos#111 must therefore create the `.eu` glue host object first; until it exists, attaching `dns2.l42.eu` to the `l42.eu` delegation will be rejected. (Observed 2026-06-08 by lucos-site-reliability: the `.uk`/`.co.uk` zones were already updated to `{ dns, dns2 }`, while `l42.eu` still listed `{ dns.l42.eu, ns1.lukeblaney.co.uk }` — consistent with this `.eu`-specific glue-host-object step being the outstanding one, though registry propagation lag could not be fully excluded.) This is an implementation sequencing detail, not a change to the target topology above.
+
 The removal of `ns1.lukeblaney.co.uk` carries a pre-flight check (see Follow-up actions) that belongs in lucas42/lucos#111's scope: confirm nothing else references that name before deleting it.
 
 ## Alternatives considered
