@@ -3,13 +3,14 @@
 **Date:** 2026-06-08
 **Status:** Proposed
 **Discussion:** [lucas42/lucos_dns#107](https://github.com/lucas42/lucos_dns/issues/107)
+**Incident:** [2026-06-07 estate-wide DNS outage](../incidents/2026-06-07-estate-wide-dns-outage.md)
 **Extends:** [ADR-0003](0003-secondary-dns-nameserver.md) (secondary nameserver), [ADR-0010](0010-dns-primary-secondary-as-separate-systems.md) (primary/secondary as separate systems)
 
 ## Context
 
 ADR-0003 decided that lucos should run a secondary authoritative nameserver on `xwing`; ADR-0010 modelled the primary and secondary as two separate systems/repos. Both addressed *serving* the zones from a second host. **Neither addressed how external resolvers discover and reach that second host** — the parent-delegation topology.
 
-The 2026-06-07 estate-wide DNS outage (incident report owned by lucos-site-reliability) exposed the gap. A single fault on `avalon` — a stale generated `l42.eu` apex zone, rejected by BIND on a deploy restart — took out *all* authoritative DNS for the estate, because every externally-visible nameserver for `l42.eu` resolves to `avalon`.
+The [2026-06-07 estate-wide DNS outage](../incidents/2026-06-07-estate-wide-dns-outage.md) exposed the gap. A single fault on `avalon` — a stale generated `l42.eu` apex zone, rejected by BIND on a deploy restart — took out *all* authoritative DNS for the estate, because every externally-visible nameserver for `l42.eu` resolves to `avalon`.
 
 The delegation, as verified by lucos-site-reliability on 2026-06-08 via the `.eu` TLD servers (facts below are their verification, not independently re-checked here):
 
