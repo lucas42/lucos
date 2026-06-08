@@ -4,6 +4,7 @@
 **Status:** Accepted
 **Amended:** 2026-06-01 — per-host enforce control (see Amendment 1 at end)
 **Amended:** 2026-06-08 — DOCKER-USER bridge-interface RETURN rules (see Amendment 2 at end)
+**Amended:** 2026-06-08 — link-local mDNS base-allow (see Amendment 3 at end)
 **Discussion:** https://github.com/lucas42/lucos/issues/169
 
 ## Context
@@ -322,3 +323,65 @@ This pattern applies to both the IPv4 (`iptables`) and IPv6 (`ip6tables`) rulese
 
 - `lucas42/lucos_firewall#13` — issue tracking the blast-radius analysis and implementation.
 - `lucas42/lucos_firewall#14` — PR shipping the RETURN rules and regression tests.
+
+## Amendment 3 (2026-06-08) — link-local mDNS base-allow
+
+### Context for the amendment
+
+The estate's default-deny `INPUT` policy was written to close *internet-facing* exposure — the ADR's stated purpose. It does not distinguish internet-origin traffic from **link-local** traffic, so when xwing and salvare flipped to enforce, the `INPUT DROP` also caught inbound **multicast DNS** (mDNS, UDP 5353, group `224.0.0.251` / `ff02::fb`) — the protocol behind `.local` name resolution (RFC 6762).
+
+Two consequences followed immediately:
+
+1. **`.local` resolution from the LAN broke.** xwing and salvare can no longer *answer* mDNS queries for their own `.local` names — the inbound multicast query is dropped before the responder sees it — so `xwing.local` / `salvare.local` became unresolvable from other devices on the LAN.
+2. **The backups → aurora poll broke.** aurora (the storage-only NAS — `lucos_backups` ADR-0001) is addressed as `aurora.local` and reached via xwing as ProxyJump. mDNS resolution of `aurora.local` happens *on xwing*; with inbound 5353 dropped there, aurora's multicast response never reaches xwing's resolver. This had previously surfaced only as a transient flap (`lucas42/lucos_backups#283`); enforce made it permanent.
+
+This is the **same class of defect as Amendment 2**: the chain dropped traffic the ADR never intended to police. Amendment 2 concerned bridge-origin inter-container traffic on `DOCKER-USER`; this concerns link-local discovery traffic on `INPUT`. In both cases the fix restores the ADR's intended scope (internet-facing exposure), it does not loosen it.
+
+mDNS is **not** a lucos service port and was never internet-reachable: its multicast groups are link-local by construction (`ff02::fb` is link-local scope; `224.0.0.251` sits in the never-forwarded `224.0.0.0/24` control block), so no router forwards them inbound from the internet. It belongs to the same category as ICMP, ICMPv6 and NDP — link-local/host infrastructure the firewall already hardcodes as base allows because the network needs it to function, distinct from the configy-declared `public_ports`.
+
+Tracked as `lucas42/lucos_firewall#16`.
+
+### Decision
+
+**Base-allow inbound link-local mDNS in the generated rulesets, scoped to the mDNS multicast groups.** Add to the hardcoded base allow-list (alongside the existing ICMP/NDP carve-outs), in **both** the IPv4 and IPv6 rulesets:
+
+```
+-A INPUT -d 224.0.0.251 -p udp --dport 5353 -j ACCEPT     # IPv4 mDNS (link-local multicast)
+-A INPUT -d ff02::fb     -p udp --dport 5353 -j ACCEPT     # IPv6 mDNS (link-local multicast)
+```
+
+Scoping by destination multicast group is the tightest form: it opens nothing internet-reachable (neither group is router-forwardable) and needs no source allow-list. This is *narrower* in reachability than the existing ICMP echo-request carve-out.
+
+Two implementation details are deliberately left as **verify-then-add**, consistent with the ADR's preference for the minimal rule that demonstrably works:
+
+- **QU-bit unicast replies.** A querier may set the unicast-response bit; that reply arrives as inbound unicast to `:5353` and will not match `-d 224.0.0.251`. It normally rides the existing ESTABLISHED/RELATED accept. If testing shows gaps, add a source-scoped companion rule (LAN / link-local source → `udp --dport 5353`) — not speculatively.
+- **IGMP.** On a flat switched LAN the mDNS group is typically flooded at L2 and reception works without explicit IGMP handling. If a managed switch performs IGMP snooping, inbound IGMP (protocol 2) membership traffic may also need allowing. Verify on the actual LAN.
+
+### Naming-policy corollary
+
+This amendment restores `.local` as a **link-local convenience** (human / ad-hoc access; e.g. `ssh xwing.local`). It does **not** make mDNS a sanctioned dependency for automation. The estate's authoritative host addressing is **managed unicast DNS** — every first-class host already carries a `*.s.l42.eu` name in configy; mDNS `.local` is permitted but must not be relied upon by unattended machine-to-machine jobs. aurora is the single remaining host addressed by `.local`, and its backup poll is the single automation that depends on mDNS; moving it onto a deterministic name is tracked separately (`lucas42/lucos_backups#306`) and should proceed regardless of this amendment. The principle: **a discovery protocol is the wrong dependency for an unattended automation path**, independent of whether the firewall permits it.
+
+### Consequences
+
+**Positive**
+
+- `.local` resolution is restored estate-wide — both hosts answering for their own names and resolution of other `.local` hosts (incl. `aurora.local` from xwing).
+- The carve-out is link-local by construction and adds no internet-reachable surface; it is consistent with the ADR's existing ICMP/NDP base allows and the "configy declares services; the firewall hardcodes only non-service infrastructure" model.
+- No configy or per-service changes; the rule is part of the generated base ruleset on every host.
+
+**Negative / scope note**
+
+- It is one more hardcoded base allow to carry. Justified by the same reasoning as ICMP/NDP: LAN-attached hosts need link-local discovery to function, and the alternative (every host losing `.local`) is a worse default than a tightly-scoped, internet-unreachable allow.
+- It keeps mDNS *available*, which could tempt new automation to depend on it. The naming-policy corollary above is the guard — a documented (soft) guard, not an enforced one.
+
+### Rollout
+
+- **Retro-apply to xwing and salvare** (already enforcing, currently broken).
+- **Prerequisite for avalon enforce** under `lucas42/lucos#182` — avalon must not flip to enforce until this carve-out is in the generated rulesets, or it will sever avalon's link-local resolution too.
+
+### Amendment 3 references
+
+- `lucas42/lucos_firewall#16` — issue tracking the mDNS carve-out implementation.
+- `lucas42/lucos_backups#283` — the prior transient `aurora.local` flap; context for the naming-policy corollary.
+- `lucas42/lucos_backups#306` — follow-up to move aurora's backup addressing off `.local`.
+- `lucas42/lucos#182` — firewall rollout sequence; avalon enforce gated on this amendment.
