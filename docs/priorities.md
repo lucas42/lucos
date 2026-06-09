@@ -2,15 +2,19 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when setting the Priority field during triage.
 
-**Last updated**: 2026-06-01
+**Last updated**: 2026-06-09
 
 ---
 
 ## Active priorities (in order)
 
-### 1. lucos_firewall
+### 1. lucos_aithne — passkey-based authentication
 
-Design and rollout of the `lucos_firewall` service, per ADR-0007 — the current top priority. The repo is bootstrapped and the `public_ports` schema has landed in `lucos_configy`. Remaining work: populating `public_ports` for the public-facing services, implementing the firewall container (Go) that generates and applies iptables/ip6tables rules from configy, RNDC tightening in `lucos_dns`, and the progressive deployment to avalon → xwing → salvare. Issues that progress the firewall implementation or its rollout should be Priority = High.
+Design and build of `lucos_aithne`, a brand-new passkey-based authentication service to replace `lucos_authentication` — the current top priority. Tracked in lucas42/lucos_aithne#1. Key goals: passkey support, no third-party reliance, a standard authentication protocol usable by off-the-shelf tools, a mechanism for trusted LLM agents to authenticate, exposing a `lucos_contacts` ID for the logged-in person, and single-sign-on across services within a session. This is a clean-slate build — no backwards compatibility with `lucos_authentication` — so all existing consumers will need migrating across. Issues that progress the design, build, or consumer migration of `lucos_aithne` should be Priority = High.
+
+### 2. Google Photos → lucOS Photos migration
+
+Migration of historical photos (~78GB) from Google Photos into `lucos_photos`, preserving as much metadata as possible (dates, descriptions, and face tags where feasible). Tracked in lucas42/lucos_photos#424. The first phase is planning: assessing whether the current import endpoint is sufficient, designing a resumable migration script, confirming the backup approach scales (incremental backups may be needed), and handling the duplication from the current dual-upload (lucos_photos + Google Photos) without relying on byte-identical matching. Issues that progress this migration should be Priority = High, ordered below lucos_aithne work.
 
 ---
 
@@ -20,7 +24,7 @@ The following repositories have all non-critical work paused. Issues in these re
 
 ### lucos_auth
 
-All work paused except critical security updates. The service is planned to be replaced entirely with something based around passkeys. New feature work would be wasted effort.
+All work paused except critical security updates. The service is being replaced entirely by `lucos_aithne` (active priority #1, passkey-based). New feature work would be wasted effort.
 
 ---
 
