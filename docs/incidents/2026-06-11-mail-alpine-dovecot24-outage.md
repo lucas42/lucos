@@ -14,7 +14,7 @@
 
 A Dependabot PR (lucas42/lucos_mail#58) bumped the postfix container's base image `alpine:3.21.1 → alpine:3.24.0` and auto-merged. Alpine 3.22+ ships **Dovecot 2.4**, which introduced a breaking config-format change: `dovecot.conf` must begin with a `dovecot_config_version` setting. The repo's `postfix/dovecot.conf` predates that requirement, so Dovecot failed fatally on every start (`doveconf: Fatal: … line 2: The first setting must be dovecot_config_version`). The `lucos_mail_smtp` container crash-looped, postfix never opened port 25, and the deploy healthcheck (`nc -z 127.0.0.1 25`) failed.
 
-The container **built** cleanly — the breakage manifests only at runtime/deploy, which is why it passed the auto-merge CI gate. Service was restored by rerunning the last-green pipeline (redeploying the working alpine-3.21.1 image), then the base image was pinned back to `alpine:3.21.1` (PR #59) to make `main` green durably. Re-applying the alpine upgrade requires a Dovecot 2.4 config migration, tracked in `lucas42/lucos_mail#60`.
+The container **built** cleanly — the breakage manifests only at runtime/deploy, which is why it passed the auto-merge CI gate. Service was restored by rerunning the last-green pipeline (redeploying the working alpine-3.21.1 image), then the base image was pinned back to `alpine:3.21.1` (PR lucas42/lucos_mail#59) to make `main` green durably. Re-applying the alpine upgrade requires a Dovecot 2.4 config migration, tracked in `lucas42/lucos_mail#60`.
 
 ---
 
@@ -22,15 +22,15 @@ The container **built** cleanly — the breakage manifests only at runtime/deplo
 
 | Time (UTC) | Event |
 |---|---|
-| 11:15:55 | Dependabot #58 (`alpine:3.21.1 → 3.24.0`) auto-merges → pipeline #151 |
+| 11:15:55 | Dependabot lucas42/lucos_mail#58 (`alpine:3.21.1 → 3.24.0`) auto-merges → pipeline 151 |
 | 11:42:04 | First deploy of the broken `1.0.20` image to avalon — smtp container recreated, dovecot fails fatally, crash-loop begins, **mail down** |
 | 11:42 → 11:50 | Repeated deploy attempts fail (healthcheck on port 25); rollout's CI-green check over-retries the failed workflow (~14 queued reruns) |
 | ~11:50 | SRE engaged via team-lead |
 | 11:51 | Cancelled the ~14 queued/running reruns of the broken pipeline (stop redeploying the broken image); verified the avalon deploy lock was **not** orphaned (other avalon deploys still landing) |
-| 11:51 | Reran the last-green pipeline (#146) to restore service |
-| 11:54:45 | Pin PR #59 (`alpine → 3.21.1`) approved by lucas42 and auto-merged → pipeline #156 |
+| 11:51 | Reran the last-green pipeline (pipeline 146) to restore service |
+| 11:54:45 | Pin PR lucas42/lucos_mail#59 (`alpine → 3.21.1`) approved by lucas42 and auto-merged → pipeline 156 |
 | ~11:56:30 | Restore deploy completes — `lucos_mail_smtp` Up (healthy), port 25 listening, **mail restored** |
-| ~11:57 | Pipeline #156 green → `main` green |
+| ~11:57 | Pipeline 156 green → `main` green |
 
 ---
 
@@ -42,9 +42,11 @@ The container **built** cleanly — the breakage manifests only at runtime/deplo
 
 This is a base-image upgrade carrying a **breaking change in a bundled package**, not a Dockerfile or application bug. The bump itself is desirable (security currency); it simply can't be taken until the config is migrated.
 
-### Why it passed auto-merge: CI gates on build, not deploy
+### Why it passed auto-merge: no test exercises the running stack
 
-`apk add postfix dovecot` succeeds at **build** time — dovecot's config is only parsed when the daemon **starts**, which happens at deploy/runtime. The Dependabot auto-merge workflow gates on a green build/test, so the PR auto-merged on a green build while the latent runtime failure waited for the deploy step. Every subsequent deploy attempt then failed identically — a persistent failure, not a flaky one. (The ~14 queued workflows on the failing pipeline were retries from the rollout's CI-green check, not independent failures.)
+`apk add postfix dovecot` succeeds at **build** time — dovecot's config is only parsed when the daemon **starts**, which happens at deploy/runtime. lucos_mail has **no CI test job** that starts the stack, so nothing between merge and production ever ran `doveconf` or brought postfix up. The Dependabot auto-merge gate had only a green build to look at, so it merged on a green build while the latent runtime failure waited for the deploy step. Every subsequent deploy attempt then failed identically — a persistent failure, not a flaky one. (The ~14 queued workflows on the failing pipeline were retries from the rollout's CI-green check, not independent failures.)
+
+The sharp lesson (lucas42's framing): the gap isn't "auto-merge should gate on a successful *deploy*" — it's that **a test asserting the mail stack actually comes up would have failed in CI and blocked the auto-merge outright**, no deploy needed. That test is the durable fix, tracked in `lucas42/lucos_mail#61`.
 
 ### Detection gap: monitoring doesn't probe the mail path
 
@@ -66,6 +68,6 @@ This is a base-image upgrade carrying a **breaking change in a bundled package**
 
 ## Follow-ups
 
-- **`lucas42/lucos_mail#60` — Dovecot 2.4 config migration (time-sensitive).** Migrate `dovecot.conf` to 2.4 syntax so the alpine upgrade can be re-applied. lucos_mail auto-merges Dependabot daily, so the alpine 3.24 bump **will re-open and re-merge, re-breaking mail**, until this lands or the alpine docker updater is temporarily held.
-- **Process: should base-image bumps gate auto-merge on a successful deploy, not just a build?** This class of failure (runtime-only breakage in an auto-merged base bump) is invisible to a build-gated auto-merge. Worth a process/ADR discussion. (Flagged to team-lead.)
+- **`lucas42/lucos_mail#61` — add a CI test job that fails when the mail stack doesn't start (the durable fix).** This is the real remediation: a test that brings the stack up would have caught the Dovecot 2.4 breakage in CI and **blocked the auto-merge**, rather than letting it ship and fail at deploy. It also closes the recurrence risk — once it's in, the alpine 3.24 bump fails CI and can't auto-merge, so no ignore/hold is needed.
+- **`lucas42/lucos_mail#60` — Dovecot 2.4 config migration.** Migrate `dovecot.conf` to 2.4 syntax so the alpine upgrade can be re-applied (then the base can move past 3.21). Until either #61 (blocks the bad bump) or #60 (makes the bump safe) lands, Dependabot's daily docker updater would otherwise re-open and auto-merge the alpine 3.24 bump and re-break mail — covered in the interim by team-lead owning the next-run deadline.
 - **Monitoring coverage: no smtp/mail-delivery probe on lucos_mail.** A synthetic "is port 25 accepting / can we send a test mail" check would have surfaced this as "mail down" rather than "CI red". Worth weighing against the cost of a synthetic-mail check (test-message hygiene, per-host config) before building — captured here as a known gap rather than an automatic action.
