@@ -66,8 +66,24 @@ The sharp lesson (lucas42's framing): the gap isn't "auto-merge should gate on a
 
 ---
 
-## Follow-ups
+## Follow-up Actions
 
-- **`lucas42/lucos_mail#61` — add a CI test job that fails when the mail stack doesn't start (the durable fix).** This is the real remediation: a test that brings the stack up would have caught the Dovecot 2.4 breakage in CI and **blocked the auto-merge**, rather than letting it ship and fail at deploy. It also closes the recurrence risk — once it's in, the alpine 3.24 bump fails CI and can't auto-merge, so no ignore/hold is needed.
-- **`lucas42/lucos_mail#60` — Dovecot 2.4 config migration.** Migrate `dovecot.conf` to 2.4 syntax so the alpine upgrade can be re-applied (then the base can move past 3.21). Until either lucas42/lucos_mail#61 (blocks the bad bump) or lucas42/lucos_mail#60 (makes the bump safe) lands, Dependabot's daily docker updater would otherwise re-open and auto-merge the alpine 3.24 bump and re-break mail — covered in the interim by team-lead owning the next-run deadline.
-- **Monitoring coverage: no smtp/mail-delivery probe on lucos_mail.** A synthetic "is port 25 accepting / can we send a test mail" check would have surfaced this as "mail down" rather than "CI red". Worth weighing against the cost of a synthetic-mail check (test-message hygiene, per-host config) before building — captured here as a known gap rather than an automatic action.
+| Action | Issue / PR | Status |
+|---|---|---|
+| **Durable fix:** CI test job that fails when the mail stack doesn't start, blocking the bad bump at CI rather than at deploy | lucas42/lucos_mail#61 | Done — merged; verified end-to-end (re-introducing alpine 3.24 now fails `ci/circleci: test` with the original `dovecot_config_version` error, and `test` is a required check, so the bump can't merge) |
+| Migrate `dovecot.conf` to Dovecot 2.4 so the alpine upgrade can be re-applied (lets the base move past 3.21) | lucas42/lucos_mail#60 | Open |
+| Add an smtp/port-25 reachability check to monitoring — covers the orthogonal *runtime* detection gap (an smtp outage from a non-CI cause is currently invisible to monitoring) | lucas42/lucos_mail#65 | Open |
+| Restore: pin postfix base back to `alpine:3.21.1` | lucas42/lucos_mail#59 | Done — merged |
+| Interim stopgap: temporary `alpine >= 3.22` ignore on the `/postfix` updater | lucas42/lucos_mail#62 | Closed — not pursued; superseded by the verified lucas42/lucos_mail#61 guard |
+
+The recurrence risk (Dependabot's daily docker updater re-opening and auto-merging the alpine 3.24 bump) is now closed by lucas42/lucos_mail#61: the bump fails the required `test` check and cannot auto-merge.
+
+---
+
+## Sensitive Findings
+
+**Were sensitive data, credentials, or security-relevant details involved in this incident?**
+
+[x] No — nothing in this report has been redacted.
+
+The incident was a config-format incompatibility introduced by a base-image version bump; no credentials, user data, or other sensitive information were involved or exposed.
