@@ -62,7 +62,7 @@ Worth naming the second-order judgement too: deferring the CA bundle was itself 
 
 Stepping back from "the CA bundle wasn't copied": the single decision that made this failure possible was choosing `FROM scratch` for the runtime stage. A scratch image ships *nothing* — no CA bundle, no tzdata, no `/etc/passwd`. There is an estate precedent that avoids the entire class: `lucos_docker_health` builds its runtime stage `FROM gcr.io/distroless/static-debian12`, which ships a CA bundle and timezone data by default — you cannot forget to copy something the base already provides.
 
-The honest trade-off: `scratch` has a genuine merit — absolute-minimum attack surface, nothing in the image to exploit — so this is not a blanket "scratch is wrong." But for any service that makes (or might ever make) outbound HTTPS, `distroless/static` is the better default, and aithne is the proof: "makes no outbound calls" was true at creation and silently became false later. This reframes the `lucas42/lucos#240` follow-up from "audit scratch images for missing CA bundles" (patch the symptom) toward "should new Go services default to `distroless/static` unless they provably need nothing outbound?" (kill the class). That convention question is a candidate for a short ADR and is being settled with lucos-architect before the audit is actioned. (Per lucos-architect's review.)
+The honest trade-off: `scratch` has a genuine merit — absolute-minimum attack surface, nothing in the image to exploit — so this is not a blanket "scratch is wrong." But for any service that makes (or might ever make) outbound HTTPS, `distroless/static` is the better default, and aithne is the proof: "makes no outbound calls" was true at creation and silently became false later. This separates into two follow-ups: `lucas42/lucos#240` patches the symptom (audit existing scratch images, encode the CA-bundle convention) and is closeable on its own, while `lucas42/lucos#242` carries the class-kill question — "should new Go services default to `distroless/static` unless they provably need nothing outbound?" — as a convention decision for lucas42, with a short ADR if he says yes. They were deliberately split so an open-ended decision doesn't gate the ready audit work — which is itself the incident's lesson (a tracked issue, not a deferred sub-bullet) applied. (Per lucos-architect's review.)
 
 ### Why detection was delayed (and impact was contained)
 
@@ -84,7 +84,8 @@ Nothing was tried that failed — diagnosis was first-attempt. Worth recording, 
 | Action | Issue / PR | Status |
 |---|---|---|
 | Add CA bundle + zoneinfo to aithne's scratch stage | `lucas42/lucos_aithne#107` | Done (merged 15:02 UTC, deployed 15:06 UTC) |
-| Audit other `FROM scratch` Go services across the estate for the same latent gap (no CA bundle + a current or future outbound HTTPS call); includes the open convention question of whether new Go services should default to `distroless/static` | `lucas42/lucos#240` | Open |
+| Audit other `FROM scratch` Go services for the same latent gap, and encode the "scratch + outbound HTTPS ⇒ COPY the CA bundle" convention | `lucas42/lucos#240` | Open |
+| Decide whether new Go services should default to `distroless/static` instead of `scratch` (convention default; ADR if yes) — split out so an open-ended decision doesn't gate the audit | `lucas42/lucos#242` | Open |
 | Surface a degradation signal when the contacts name lookup falls back to the raw contact ID (pre-existing UX concern surfaced by this incident) | `lucas42/lucos_aithne#108` | Open |
 
 ---
