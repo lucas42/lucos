@@ -54,6 +54,8 @@ FROM scratch
 
 The CA-bundle work was deliberately deferred until "the service makes its first outbound HTTPS calls." `lucas42/lucos_aithne#105` was exactly that moment — it added the first outbound HTTPS call — but the deferred work item had no tracking issue and no CI guard, so nothing connected "we are now adding an outbound HTTPS call" to "the deferred CA-bundle task is now due." The latent gap activated silently at deploy time.
 
+**Prevention.** A deferred-work comment in a Dockerfile has no trackable backstop — it relies on whoever later adds the outbound call having read and remembered the comment. The durable mitigation is a convention rather than a comment: *if a scratch (or distroless-without-certs) image's binary makes any outbound HTTPS call, the final stage must `COPY` `/etc/ssl/certs/ca-certificates.crt` in.* This is captured as a checklist item in the estate-audit follow-up (`lucas42/lucos#240`) so it survives beyond this report. (Per lucos-system-administrator's review.)
+
 ### Why detection was delayed (and impact was contained)
 
 The failure only fires when the outbound-HTTPS code path actually runs, which on these admin pages only happens when someone loads them. `contacts.Get()` is also written as non-fatal — it logs the error and falls back to showing the raw contact ID — so the pages still rendered, just without resolved names. `LUCOS_CONTACTS_ORIGIN` is aithne's only outbound HTTPS dependency, so the blast radius was confined to contact-name resolution. The trade-off: the same non-fatal design that contained the impact also meant a green `/_info` healthcheck never reflected the failure, so it could only be caught by a user hitting the path or by reading the logs.
