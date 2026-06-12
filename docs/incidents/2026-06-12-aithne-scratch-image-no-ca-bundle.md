@@ -84,7 +84,8 @@ Nothing was tried that failed — diagnosis was first-attempt. Worth recording, 
 | Action | Issue / PR | Status |
 |---|---|---|
 | Add CA bundle + zoneinfo to aithne's scratch stage | `lucas42/lucos_aithne#107` | Done (merged 15:02 UTC, deployed 15:06 UTC) |
-| Audit other `FROM scratch` Go services across the estate for the same latent gap (no CA bundle + a current or future outbound HTTPS call) | `lucas42/lucos#240` | Open |
+| Audit other `FROM scratch` Go services across the estate for the same latent gap (no CA bundle + a current or future outbound HTTPS call); includes the open convention question of whether new Go services should default to `distroless/static` | `lucas42/lucos#240` | Open |
+| Surface a degradation signal when the contacts name lookup falls back to the raw contact ID (pre-existing UX concern surfaced by this incident) | `lucas42/lucos_aithne#108` | Open |
 
 ---
 
