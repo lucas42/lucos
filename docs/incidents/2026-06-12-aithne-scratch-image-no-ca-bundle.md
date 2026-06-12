@@ -87,6 +87,7 @@ Nothing was tried that failed — diagnosis was first-attempt. Worth recording, 
 | Audit other `FROM scratch` Go services for the same latent gap, and encode the "scratch + outbound HTTPS ⇒ COPY the CA bundle" convention | `lucas42/lucos#240` | Open |
 | Decide whether new Go services should default to `distroless/static` instead of `scratch` (convention default; ADR if yes) — split out so an open-ended decision doesn't gate the audit | `lucas42/lucos#242` | Open |
 | Surface a degradation signal when the contacts name lookup falls back to the raw contact ID (pre-existing UX concern surfaced by this incident) | `lucas42/lucos_aithne#108` | Open |
+| Add an admin invite-revocation endpoint (the store has no revocation path; surfaced when the verification test invite could not be voided) | `lucas42/lucos_aithne#109` | Open |
 
 ---
 
