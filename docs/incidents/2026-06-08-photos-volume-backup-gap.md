@@ -47,7 +47,7 @@ The full-snapshot path `tar`s a volume and `scp`s the archive to aurora over a P
 
 The `rsync --link-dest` path (lucas42/lucos_backups#324) ran the rsync inside an ephemeral `docker run` container as root, transferring to aurora across the same ProxyJump gateway. It carried two latent bugs that could only surface on a real run, and surfaced *one at a time*:
 
-1. **ProxyJump host-key verification (lucas42/lucos_backups#327 → #329).** The rsync container has an empty `known_hosts`, and a command-line `ssh -o StrictHostKeyChecking=no` does **not** propagate to the ProxyJump hop — so the jump to the gateway failed host-key verification (`Host key verification failed` / rsync exit 255). The transfer never started. Fixed by mounting the source host user's `known_hosts` read-only into the rsync container (v1.1.14).
+1. **ProxyJump host-key verification (lucas42/lucos_backups#327 → #329).** The rsync container has an empty `known_hosts`, and a command-line `ssh -o StrictHostKeyChecking=no` does **not** propagate to the ProxyJump hop — so the jump to the gateway failed host-key verification (`Host key verification failed` / rsync exit 255). The transfer never started. Fixed by mounting the source host user's `known_hosts` read-only into the rsync container (v1.1.14). `StrictHostKeyChecking=no` is **retained** for parity with the host-side path — so a *known* key is now verified, but a *changed* key is still accepted silently; tightening that to `accept-new` is tracked as a non-blocking hardening (lucas42/lucos_backups#332).
 
 2. **Atomic-publish command runs on the wrong host (lucas42/lucos_backups#330 → #331).** The publish step `rm -rf <final> && mv <partial> <final>` was passed **unquoted** through `runOnRemote`, so the source host's local shell interpreted the `&&`: `rm -rf` ran on the *target* (via ssh) but `mv` ran *locally* on the source, where the `.partial` directory doesn't exist. rsync succeeded and the data landed in `<date>.partial/` on the target, but was never published to the final `<date>/` snapshot — so the run was reported as failed and produced no usable backup. Fixed by `shlex.quote`-ing the command in `runOnRemote` so the whole compound is evaluated on the target (v1.1.15). The fix lives in the shared `runOnRemote` helper (`src/classes/host.py`), not at the photos call site — so it closes this class for **every** caller, current and future, and no separate audit of other `runOnRemote` callers is required. (Thanks to lucos-developer for raising the broader-caller question during review.)
 
@@ -59,7 +59,7 @@ Bug 1 blocked rsync entirely, so bug 2 (in the post-transfer publish step) was u
 
 ## What Was Tried That Didn't Work
 
-- **`ssh -o StrictHostKeyChecking=no` as the host-key fix.** The obvious mitigation for an empty `known_hosts` does not cover the ProxyJump hop, so it left the jump connection still failing verification. Mounting the host's real `known_hosts` was the correct fix.
+- **Assuming `StrictHostKeyChecking=no` alone would carry the container's SSH.** The cross-host path already sets `StrictHostKeyChecking=no` (host-side parity), and the natural assumption was that this would let the empty-`known_hosts` rsync container connect without host-key friction. It doesn't: `StrictHostKeyChecking=no` is **not** propagated to the ProxyJump hop, so the jump connection still failed verification (#327). The fix was not to *remove* `=no` but to *add* a mounted `known_hosts` so the jump host's key is known; `=no` is retained as the first-use (TOFU) fallback — which is exactly why a follow-up hardening to `accept-new` is now tracked (see Follow-up Actions).
 - Diagnosis was otherwise first-attempt for each bug — the error text named the failure mode directly (`Host key verification failed`; transferred data sitting in `<date>.partial/`).
 
 ---
@@ -71,6 +71,7 @@ Bug 1 blocked rsync entirely, so bug 2 (in the post-transfer publish step) was u
 | Incremental `rsync --link-dest` strategy for the photos volume (ADR-0002) | lucas42/lucos_backups#324 | Done (v1.1.13) |
 | Fix ProxyJump host-key verification (mount host `known_hosts` into the rsync container) | lucas42/lucos_backups#329 | Done (v1.1.14) |
 | Shell-quote `runOnRemote` so the incremental publish `rm`/`mv` runs on the target | lucas42/lucos_backups#331 | Done (v1.1.15) |
+| Harden cross-host backup SSH to `StrictHostKeyChecking=accept-new` (reject *changed* host keys, not just verify known ones) — raised by lucos-security during review | lucas42/lucos_backups#332 | Open (P3, non-blocking hardening) |
 | Build a CI/staging harness exercising the incremental rsync-over-ProxyJump path before deploy | — | **Not filed — risk accepted.** The path needs the real gateway + aurora reachable and would be non-deterministic in CI (high build/maintain cost); the failure mode is an internal backup delayed by ≤1 day, and the existing `create-backups` monitoring check already catches both a hard failure and the data-stranding case (the run reports failed → check goes red) within a day. The effort doesn't justify the marginal detection gain. Captured here rather than as a low-value ticket. |
 
 ---
