@@ -30,6 +30,7 @@ A change to how `lucos_aithne` derives its signing-key encryption key (`SIGNING_
 | 16:33:22 | `--migrate-kek` succeeded — re-encrypted 1 signing key under the new SHA-256-derived KEK. (Two earlier attempts failed *before any DB write* — see "What Was Tried That Didn't Work".) |
 | ~16:34 | Temp dev handoff key cleared from creds; fresh CircleCI deploy triggered (pipeline #442) to recreate the container with the new `SIGNING_KEK` from production creds. |
 | 16:37:04 | Container recreated on v2.0.1, **healthy**. `/_info` green (`db`, `signing_key`, `signing_key_age`); JWKS serving the **preserved** signing key (kid `15afb754…`). **Service restored.** |
+| (post-recovery) | Human passkey login at `aithne.l42.eu/auth/login` confirmed working (lucas42). Recovery verified end-to-end across both the machine path (JWKS / token issuance) and the human login path. |
 
 ---
 
@@ -41,6 +42,8 @@ lucos_aithne#260 changed the `SIGNING_KEK` contract: the env value is now run th
 
 lucos deploys automatically on merge to `main`. There was nothing holding the deploy until the migration had run, so the sequence was: merge → build → deploy → new image starts → startup `MigrateSigningKeyEncryption` can't decrypt the signing key under the new KEK → `log.Fatal` → restart → repeat. The migration is a manual, out-of-band operator action, and the release shipped with no gate coupling the two. The race is the root cause; it is a property of "breaking on-disk migration" + "auto-deploy on merge" with no coordination between them.
 
+The documented procedure tacitly assumed a human in the loop between merge and restart, in which the operator runs `--migrate-kek` before bringing the new image up. **Auto-merge plus auto-deploy closes that window to zero** — there is no human-occupied gap to run the migration in. A migration-coupled release therefore cannot rely on operator timing; the coupling has to be enforced by the system (gate or fail-soft startup), which is what lucas42/lucos_aithne#261 tracks.
+
 ### Aggravating factor — the failure presents as "database may be corrupt"
 
 The startup migration cannot distinguish "AES-GCM ciphertext under a *different* KEK" from "corrupt / not ciphertext at all", so it reports `database may be corrupt`. The data was not corrupt — it was correctly-wrapped ciphertext under the old KEK derivation. A responder taking that message at face value could be steered toward a *data-recovery* path (restore from backup, suspect disk corruption) instead of the actual fix (run the KEK migration). Clearer diagnostics here would shorten any future occurrence.
@@ -48,6 +51,8 @@ The startup migration cannot distinguish "AES-GCM ciphertext under a *different*
 ### Recovery friction — the documented procedure didn't match the running system
 
 The `--migrate-kek` procedure in the PR body referenced `lucos_aithne_web` (a stale container/image name; the real names are `lucos_aithne` / `lucas42/lucos_aithne` / `lucos_aithne_credential_store`) and assumed a Docker entrypoint that the image does not set. In addition, `main()` calls `getEnvRequired("PORT")` *before* dispatching to any subcommand, so `--migrate-kek` needs `PORT` set even though it never uses it; and the creds-emitted `.env` wraps every value in double quotes, which the deploy strips before the container sees them. None of these caused damage — each surfaced as a clean non-zero exit *before* any database write — but together they cost time during an active outage.
+
+**Near miss worth recording (flagged by security):** the double-quoting was not just friction — it was a trap for a *silent* failure. Had the quoted 46-char value been fed to `--migrate-kek` verbatim, the migration would have exited **0** (it would have happily re-wrapped the key under `sha256("…46-char…")`), but the redeployed container — reading the *unquoted* 44-char value from creds — would compute `sha256("…44-char…")` and crash-loop again. The symptom would then have been the maddening "we ran the migration and it succeeded, why is it still crashing?" An off-by-quote on the KEK produces *migrate-success-then-startup-crash*, not a clean error. This is why the value fed to `--migrate-kek` must be the exact bytes the container will receive (unquoted), and it is called out in lucas42/lucos_aithne#262 as a documentation requirement.
 
 ---
 
@@ -68,6 +73,7 @@ All three of the genuine errors above were caught before any irreversible change
 |---|---|---|
 | Couple breaking on-disk migrations to deployment so an auto-deploy can't land a release before its required migration has run (deploy gate, or startup that migrates/halts-cleanly instead of crash-looping) — needs architect input | lucas42/lucos_aithne#261 | Open |
 | aithne post-migration hardening: clearer "signing key undecryptable under current SIGNING_KEK — run `--migrate-kek`?" message instead of "database may be corrupt"; drop the `PORT` requirement for maintenance subcommands; fix the `--migrate-kek`/`--rekey` procedure docs (real container/image/volume names, `/lucos_aithne` invocation, byte-exact unquoted KEK, redeploy-not-`docker start`) | lucas42/lucos_aithne#262 | Open |
+| User-facing auth-failure messaging: what consumers display when aithne is unavailable (raw 500 vs a meaningful "sign-in temporarily unavailable" state). A pre-existing latent concern surfaced by this incident, not a direct corrective — owned by lucos-ux per the incident-notification coordination | lucas42/lucos_ux#TBD (lucos-ux filing) | Open |
 | Remove the ad-hoc pre-migration snapshot `lucos_aithne_credential_store.pre-migrate-kek-2026-06-30.tar.gz` from `avalon:/srv/backups/local/volume/` once the report is finalised (non-standard filename; kept as rollback during the incident) | — | Open |
 
 ---
