@@ -71,7 +71,7 @@ The `--migrate-kek` procedure in the PR body referenced `lucos_aithne_web` (a st
 - **Using the staged KEK value verbatim** (46 chars) → it was double-quoted in the creds `.env`; the deploy strips the quotes before the container reads it (proven: dev `SIGNING_KEK` is 34 chars quoted but the container env held it at 32). The value fed to `--migrate-kek` had to be the **unquoted 44-char** form so `sha256(new)` matches what the recreated container computes.
 - **`docker start` of the stopped container** was considered and rejected: it reuses the container's baked-in env (the *old* `SIGNING_KEK`), so it would have crash-looped again. The container had to be **recreated** via a fresh deploy so it reads the new `SIGNING_KEK` from production creds.
 
-All three of the genuine errors above were caught before any irreversible change; the only DB-mutating step (`--migrate-kek`) ran exactly once, successfully. A verified pre-migration volume snapshot was held as a rollback point throughout and was not needed.
+Each of these was caught before any irreversible change — the entrypoint and `PORT` errors as clean non-zero exits (the two failed attempts noted in the timeline), and the quote-wrapping by inspection of the staged value before it was used. The only DB-mutating step (`--migrate-kek`) ran exactly once, successfully. A verified pre-migration volume snapshot was held as a rollback point throughout and was not needed.
 
 ---
 
