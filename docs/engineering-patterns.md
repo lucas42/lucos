@@ -398,7 +398,13 @@ The `LOGANNE_ENDPOINT` environment variable provides the Loganne URL to services
 
 ### User-facing authentication
 
-User-facing services authenticate via `lucos_authentication` at `https://auth.l42.eu`. The auth domain is hardcoded in application code, not passed as an environment variable.
+User-facing services authenticate against **`lucos_aithne`** (`aithne.l42.eu`), a self-hosted OpenID Provider that replaced the former `lucos_authentication` service. The authoritative design is in the [`lucos_aithne` ADRs](https://github.com/lucas42/lucos_aithne/tree/main/docs/adr) — ADR-0001 (foundational design) and ADR-0003 (human session continuity). The summary for integrators:
+
+- **Humans** prove identity with **WebAuthn passkeys** (the WebAuthn RP ID is the registrable parent `l42.eu`, not a service subdomain, so the login origin can move within `l42.eu`). **AI agents** authenticate non-interactively via the **OAuth2 client-credentials** grant, exchanging a per-agent key held in `lucos_creds` for a session. aithne mints no identities of its own — every principal references an external authority (`lucos_contacts` for humans, the agent registry for agents).
+- Both paths yield the **same artefact**: a short-lived signed **JWT** delivered as the `aithne_session` cookie, scoped to `.l42.eu` for same-site SSO. It carries the principal class, the external identity, and the principal's **granted scopes**.
+- Services **verify the JWT locally** against aithne's JWKS (`${AITHNE_ORIGIN}/.well-known/jwks.json`) — there is no per-request callback to aithne. The aithne origin is injected via the **`AITHNE_ORIGIN` environment variable** (dev points at the dev aithne, production at the production aithne); it is **not** hardcoded in application code.
+- **Authorisation is default-deny.** A valid session can do almost nothing until it is granted named scopes, one capability at a time. A grant — a `domain:capability` scope from the [`lucos_auth_scopes`](https://github.com/lucas42/lucos_auth_scopes) vocabulary — is recorded centrally in aithne and baked into the signed session. **Backends enforce per-resource**: a sensitive action must gate on a granted scope (or on a contact-id, for per-resource ownership aithne need not know about), never on bare "is there a valid session?" — a machine principal would pass that.
+- **Session continuity:** the `aithne_session` JWT is short-lived (15 minutes). The shared `lucos_navbar` runs a background keepalive that silently re-mints it from a longer-lived server-side IdP session while a tab is open, so humans are not re-prompted mid-session (ADR-0003).
 
 ### API-to-API authentication (linked credentials)
 
