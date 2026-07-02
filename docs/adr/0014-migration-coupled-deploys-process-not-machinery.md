@@ -165,5 +165,4 @@ live only in this document, it must be surfaced in the PR-approval flow:
 - **Wire the two gates into the approval step** so a migration-coupled PR is not
   approved (by `lucos-code-reviewer` or in triage) without (a) evidence of an
   end-to-end dev rehearsal and (b) a confirmed-ready owner for each manual step.
-  A follow-up issue tracks the instruction change; it will be raised against this
-  ADR before it is reported complete.
+  Tracked as `lucos_claude_config`#121.
