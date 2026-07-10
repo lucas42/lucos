@@ -14,7 +14,7 @@ Source incident: reported via team-lead; go-live tracked on lucas42/lucos_locati
 
 ## Summary
 
-lucos_locations PR lucas42/lucos_locations#97 fronted the human map-UI paths with an oauth2-proxy sidecar (nginx `auth_request`), gated on the aithne `locations:read` scope. It merged and auto-deployed to production at 23:42 UTC **before** the prod credentials the sidecar needs had been set (those creds are lucas42-only). The oauth2-proxy container therefore crash-looped on startup (`missing setting: cookie-secret / client-secret`), and every request to a gated path returned **500** because nginx was `auth_request`-ing a dead sidecar. The underlying Go app was healthy throughout (`/_info` → 200), and the device publish path + MQTT — which use separate credential auth — were unaffected, so no location data was lost. Resolved by setting the prod creds (lucas42) and redeploying both aithne (to register the new OIDC client at startup) and lucos_locations (to inject the sidecar's creds).
+lucos_locations PR lucas42/lucos_locations#97 fronted the human map-UI paths with an oauth2-proxy sidecar (nginx `auth_request`), gated on the aithne `locations:read` scope. It merged and auto-deployed to production at 23:42 UTC **before** the prod credentials the sidecar needs had been set. This was a *known, foreseen* gap rather than a surprise: those creds are lucas42-only and were an explicitly-tracked outstanding dependency (lucas42/lucos_locations#96), and team-lead flagged at merge time that auto-deploying ahead of them would bring the sidecar up misconfigured and break the human map UI. The oauth2-proxy container therefore crash-looped on startup (`missing setting: cookie-secret / client-secret`), and every request to a gated path returned **500** because nginx was `auth_request`-ing a dead sidecar. The underlying Go app was healthy throughout (`/_info` → 200), and the device publish path + MQTT — which use separate credential auth — were unaffected, so no location data was lost. Resolved by setting the prod creds (lucas42) and redeploying both aithne (to register the new OIDC client at startup) and lucos_locations (to inject the sidecar's creds).
 
 ---
 
@@ -22,6 +22,8 @@ lucos_locations PR lucas42/lucos_locations#97 fronted the human map-UI paths wit
 
 | Time (UTC) | Event |
 |---|---|
+| (pre-merge) | The lucas42-only prod linked credential was a known outstanding dependency, tracked on lucas42/lucos_locations#96 since 2026-07-07 |
+| ~23:42 (at merge) | team-lead flags that the prod creds are not yet set and an auto-deploy will bring the sidecar up misconfigured and break the human map UI |
 | 23:42:21 | PR lucas42/lucos_locations#97 merged to main |
 | 23:42:23 | Auto-deploy (CircleCI pipeline 193) starts; oauth2-proxy sidecar comes up without its prod creds |
 | ~23:43–23:56 | oauth2-proxy begins crash-looping: `invalid configuration: missing setting: cookie-secret / client-secret`; `/map/` returns 500 |
@@ -40,6 +42,8 @@ lucos_locations PR lucas42/lucos_locations#97 fronted the human map-UI paths wit
 ### Root cause: gated deploy shipped ahead of its prod credentials
 
 PR lucas42/lucos_locations#97 introduced an oauth2-proxy sidecar in front of the human map-UI paths. The sidecar requires prod credentials to start: an OIDC `client-secret` (`KEY_LUCOS_AITHNE`, delivered by the prod linked credential lucos_locations/production ⇒ lucos_aithne/production), a `cookie-secret` (`OAUTH2_PROXY_COOKIE_SECRET`), and the aithne endpoint URLs. These are production credentials, which only lucas42 can write, and they were still outstanding (tracked on lucas42/lucos_locations#96) when the PR merged and auto-deployed.
+
+Critically, this dependency was **known and the failure was foreseen** — not an unnoticed gap. The prod linked credential had been an explicitly-tracked outstanding item on lucas42/lucos_locations#96 since 2026-07-07, and team-lead flagged at merge time that an auto-deploy ahead of the creds would bring the sidecar up misconfigured and break the human map UI. The incident occurred because the merge/deploy of a credential-gated change was not sequenced to *follow* the setting of its lucas42-only prod creds. That sequencing — not a missing detection mechanism alone — is the primary prevention lever (see Follow-up Actions).
 
 With no `cookie-secret` and no `client-secret`, oauth2-proxy exits at startup with `invalid configuration` and crash-loops. nginx (`lucos_locations_otfrontend`, healthy) is configured to `auth_request` the sidecar for every human path; a dead sidecar means the subrequest fails and nginx returns **500** to the client. This was confirmed by direct observation, not log-reading alone: the container was in `Restarting` state with `exit=1` and a climbing restart count (31 at time of diagnosis).
 
@@ -83,10 +87,10 @@ No dead ends — root cause was confirmed on first investigation and the resolut
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Prevent a credential-gated deploy from auto-deploying ahead of its prod creds (see recommendation below) | TBD | Proposed |
-| Decide intended `/map/` unauth UX: keep the 403 sign-in-button page, or auto-bounce to aithne (`skip-provider-button`) | TBD — flagged to team-lead/lucas42 | Awaiting decision |
+| Sequence lucas42-only prod creds *before* merging/deploying a credential-gated change, and/or add a guard so such a deploy can't silently ship a crash-looping sidecar | TBD — team-lead to file pending lucas42's nod | Proposed |
+| Decide intended `/map/` unauth UX: keep the 403 sign-in-button page, or auto-bounce to aithne (`skip-provider-button`) | TBD — surfaced to lucas42 by team-lead | Awaiting decision |
 
-**Recommendation under consideration (not yet filed):** a guard so a deploy that introduces a hard credential dependency cannot silently ship a crash-looping sidecar into prod. Options range from a compose-level healthcheck/dependency that fails the deploy loudly, to a checklist gate on the go-live issue. To be weighed against effort — filing decision deferred to team-lead per the calibration rule (impact here was contained + self-evident from the crash-loop, and recoverable in one redeploy once creds were set).
+**Recommendation under consideration:** the primary lever is a **process** one, because the failure was foreseen — when a credential-gated deploy is known in advance, set the lucas42-only prod creds *before* the merge/auto-deploy rather than after, so the sidecar never comes up misconfigured. A **detection** guard reinforces this as a backstop: a compose-level healthcheck/dependency that fails the deploy loudly, or a checklist gate on the go-live issue, so that if the sequencing is missed the deploy fails visibly instead of silently shipping a crash-looping sidecar. To be weighed against effort — impact here was contained + self-evident from the crash-loop, and recoverable in one redeploy once creds were set. team-lead is confirming with lucas42 whether to file this as a tracked reliability issue.
 
 ---
 
