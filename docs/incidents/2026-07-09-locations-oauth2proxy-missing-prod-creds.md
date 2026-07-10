@@ -5,7 +5,7 @@
 | **Date** | 2026-07-09 |
 | **Duration** | ~51 minutes (23:42 UTC to 00:33 UTC) |
 | **Severity** | Partial degradation (human map UI only; device ingestion unaffected) |
-| **Services affected** | lucos_locations (human map UI: `/map`, `/owntracks/api|ws|view|static|utils`) |
+| **Services affected** | lucos_locations (human map UI: `/map`, `/owntracks/api\|ws\|view\|static\|utils`) |
 | **Detected by** | User report (lucas42) |
 
 Source incident: reported via team-lead; go-live tracked on lucas42/lucos_locations#96, feature PR lucas42/lucos_locations#97.
