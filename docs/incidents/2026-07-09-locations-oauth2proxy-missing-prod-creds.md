@@ -90,7 +90,7 @@ No dead ends — root cause was confirmed on first investigation and the resolut
 | Sequence lucas42-only prod creds *before* merging/deploying a credential-gated change, and/or add a guard so such a deploy can't silently ship a crash-looping sidecar | #266 | Awaiting decision (lucas42) |
 | Decide intended `/map/` unauth UX: keep the 403 sign-in-button page, or auto-bounce to aithne (`skip-provider-button`) | lucas42/lucos_locations#99 | Awaiting decision (lucas42) |
 
-**Recommendation under consideration:** the primary lever is a **process** one, because the failure was foreseen — when a credential-gated deploy is known in advance, set the lucas42-only prod creds *before* the merge/auto-deploy rather than after, so the sidecar never comes up misconfigured. A **detection** guard reinforces this as a backstop: a compose-level healthcheck/dependency that fails the deploy loudly, or a checklist gate on the go-live issue, so that if the sequencing is missed the deploy fails visibly instead of silently shipping a crash-looping sidecar. To be weighed against effort — impact here was contained + self-evident from the crash-loop, and recoverable in one redeploy once creds were set. team-lead is confirming with lucas42 whether to file this as a tracked reliability issue.
+**Prevention (summary):** the primary lever is process — sequence the lucas42-only prod creds *before* a credential-gated merge/deploy, so the sidecar never comes up misconfigured — with an optional reinforcing backstop (a post-deploy healthcheck that catches a crash-looping sidecar, or a deploy-time creds-presence gate). The full options-and-tradeoffs analysis and the scope decision are tracked in #266.
 
 ---
 
