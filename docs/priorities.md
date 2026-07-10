@@ -2,19 +2,15 @@
 
 High-level guidance for prioritising work across lucos repositories. Agents should consult this file when setting the Priority field during triage.
 
-**Last updated**: 2026-06-09
+**Last updated**: 2026-07-10
 
 ---
 
 ## Active priorities (in order)
 
-### 1. lucos_aithne — passkey-based authentication
+### 1. Google Photos → lucOS Photos migration
 
-Design and build of `lucos_aithne`, a brand-new passkey-based authentication service to replace `lucos_authentication` — the current top priority. Tracked in lucas42/lucos_aithne#1. Key goals: passkey support, no third-party reliance, a standard authentication protocol usable by off-the-shelf tools, a mechanism for trusted LLM agents to authenticate, exposing a `lucos_contacts` ID for the logged-in person, and single-sign-on across services within a session. This is a clean-slate build — no backwards compatibility with `lucos_authentication` — so all existing consumers will need migrating across. Issues that progress the design, build, or consumer migration of `lucos_aithne` should be Priority = High.
-
-### 2. Google Photos → lucOS Photos migration
-
-Migration of historical photos (~78GB) from Google Photos into `lucos_photos`, preserving as much metadata as possible (dates, descriptions, and face tags where feasible). Tracked in lucas42/lucos_photos#424. The first phase is planning: assessing whether the current import endpoint is sufficient, designing a resumable migration script, confirming the backup approach scales (incremental backups may be needed), and handling the duplication from the current dual-upload (lucos_photos + Google Photos) without relying on byte-identical matching. Issues that progress this migration should be Priority = High, ordered below lucos_aithne work.
+Migration of historical photos (~78GB) from Google Photos into `lucos_photos`, preserving as much metadata as possible (dates, descriptions, and face tags where feasible). Tracked in lucas42/lucos_photos#424. The first phase is planning: assessing whether the current import endpoint is sufficient, designing a resumable migration script, confirming the backup approach scales (incremental backups may be needed), and handling the duplication from the current dual-upload (lucos_photos + Google Photos) without relying on byte-identical matching. Issues that progress this migration should be Priority = High.
 
 ---
 
@@ -22,9 +18,7 @@ Migration of historical photos (~78GB) from Google Photos into `lucos_photos`, p
 
 The following repositories have all non-critical work paused. Issues in these repos should generally be set to Priority = Low, or left unprioritised. Critical security updates are the only exception.
 
-### lucos_auth
-
-All work paused except critical security updates. The service is being replaced entirely by `lucos_aithne` (active priority #1, passkey-based). New feature work would be wasted effort.
+_None currently._ (When a repository has its non-critical work paused, list it here with a one-line rationale. A repository that has been fully **decommissioned and archived** does not belong here — an archived repo receives no work at all, not even critical security updates, so it needs no paused entry.)
 
 ---
 
