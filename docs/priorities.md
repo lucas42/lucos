@@ -14,14 +14,6 @@ Migration of historical photos (~78GB) from Google Photos into `lucos_photos`, p
 
 ---
 
-## Paused repositories
-
-The following repositories have all non-critical work paused. Issues in these repos should generally be set to Priority = Low, or left unprioritised. Critical security updates are the only exception.
-
-_None currently._ (When a repository has its non-critical work paused, list it here with a one-line rationale. A repository that has been fully **decommissioned and archived** does not belong here — an archived repo receives no work at all, not even critical security updates, so it needs no paused entry.)
-
----
-
 ## How to use this file
 
 The Priority field is set on **every triaged issue** — including refinement-phase issues (Status = Ideation or Awaiting Decision), not just Status = Ready. This ensures refinement work is also prioritised.
