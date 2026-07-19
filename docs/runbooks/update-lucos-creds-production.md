@@ -58,7 +58,7 @@ Confirm the file contains the new value before proceeding.
 ### 3. Base64-encode the .env file
 
 ```bash
-base64 -w 0 /tmp/lucos_creds_production.env
+base64 -w 0 -i /tmp/lucos_creds_production.env
 ```
 
 The `-w 0` flag disables line wrapping — the CircleCI env var must be a single unbroken base64 string. Copy the output.
