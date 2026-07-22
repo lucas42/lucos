@@ -45,7 +45,7 @@ This incident cascaded through several conditions. No single one was "the" cause
 
 ### Round 1 — CRLF corruption + `.env` truncation (the original outage)
 
-The production `CONFIGY_SYNC_PRIVATE_SSH_KEY` was stored with CRLF line endings. Per `lucas42/lucos_creds#477`, browsers CRLF-normalise `<textarea>` content on native form submission (a WHATWG spec behaviour, not a browser bug), and the credential UI's POST handler passed the value to storage without normalising. The Go SSH server stores whatever follows the first `=` verbatim, so the CRLF value was stored *whole*.
+The production `CONFIGY_SYNC_PRIVATE_SSH_KEY` was stored with CRLF line endings. As diagnosed in `lucas42/lucos_creds#476`, browsers CRLF-normalise `<textarea>` content on native form submission (a WHATWG spec behaviour, not a browser bug), and the credential UI's POST handler passed the value to storage without normalising. The Go SSH server stores whatever follows the first `=` verbatim, so the CRLF value was stored *whole*. This write-path defect has since been fixed on `main` in commit `3ce4817` (closing `#476`; it superseded the earlier PR `#477`, which was closed unmerged).
 
 The truncation to a 36-char header happened one layer later: the deploy fetches a production `.env` and docker-compose's line-based env-file parser reads a multi-line value only up to its first physical newline — leaving `-----BEGIN OPENSSH PRIVATE KEY-----\r` (35 chars + CR). The `startup.sh` CR-guard then correctly fail-closed on the CR, crash-looping rather than writing a broken key to disk. `lucas42/lucos_creds#471`'s rotation didn't *cause* the corruption — it made a rotation necessary, and the value written by that rotation was already malformed. The guard doing its job is why this surfaced as a loud crash-loop instead of a silent auth failure.
 
@@ -83,7 +83,7 @@ Both corruptions share a signature: the store accepted a malformed value silentl
 |---|---|---|
 | Fix monitoring fail-open on silent/forgotten scheduled-job death + liveness-only health checks (the class; 37 checks exposed) | `lucas42/lucos_schedule_tracker#96` | Open (Needs Analysis) |
 | Write-time validation in the credential store — extend to reject CRLF **and** key material that fails `ssh-keygen` (would catch both rounds at the bad write) | `lucas42/lucos_creds#473` | Open |
-| Fix the credential UI's CRLF-on-save corruption (`normalizeLineEndings`) — the Round 1 write-path defect | `lucas42/lucos_creds#477` | Open (PR, approved by bots, awaiting lucas42 re-review/merge) |
+| Fix the credential UI's CRLF-on-save corruption — the Round 1 write-path defect | `lucas42/lucos_creds#476` (commit `3ce4817`) | Done (closed `#476`; superseded PR `#477`) |
 
 ---
 
