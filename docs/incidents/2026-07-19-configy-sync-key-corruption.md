@@ -103,7 +103,7 @@ The process failure here is the coordinator's, and is named as such rather than 
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Fix monitoring fail-open on silent/forgotten scheduled-job death + liveness-only health checks (the class; 37 checks exposed) | `lucas42/lucos_schedule_tracker#96` | Open (Needs Analysis) |
+| Fix the schedule-tracker false-recovery bug: `updateScheduleError`'s `INSERT OR REPLACE` nulls `last_success`, so a resumed-but-failing job flips green on its first error; measure staleness against last *success* (shared `database.rb`, ~37 checks). Plus the liveness-only `docker_health` facet. | `lucas42/lucos_schedule_tracker#96` | Open (Needs Analysis) |
 | Write-time validation in the credential store — name/identifier validation **plus a cheap type-agnostic reject of bare CR / control characters** (catches Round 1 at the write). Scoped *not* to include typed-value validation, per architectural review. | `lucas42/lucos_creds#473` | Open |
 | Harden multi-line/key-typed secret handling end-to-end — base64 at rest + decode-then-validate at point of use (type-aware `ssh-keygen`/`openssl` dispatch; user-facing rejection message), retiring the `startup.sh` destination-guard accretion. Catches Round 2 and dissolves the transport class. Complementary to `#473`, not covered by it. | lucos-architect authoring — number TBD | Open (to be filed) |
 | Fix the credential UI's CRLF-on-save corruption — the Round 1 write-path defect | `lucas42/lucos_creds#476` (commit `3ce4817`) | Done (closed `#476`; superseded PR `#477`) |
