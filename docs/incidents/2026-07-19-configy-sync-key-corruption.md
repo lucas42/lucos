@@ -32,7 +32,7 @@ All times UTC. Anchored to GitHub comment timestamps, CircleCI pipeline times, a
 | 2026-07-19 → 21 | Crash-loop continues (~1000+ restarts, ~60h). The `lucos_creds` circleci + avalon checks stay red throughout — the dashboard correctly shows the incident this whole phase. (Note: the `configy_sync` scheduled-job *check* itself was fail-open green the whole time — the job stopped reporting — but was moot here because the crash-loop's deploy failure kept the other two checks red. See `lucas42/lucos_schedule_tracker#96`.) |
 | 2026-07-21 ~22:50–22:54 | First fix attempt: the key is re-stored and line-endings converted (pipeline 1106). Container recreates (StartedAt 22:54:18) with a **new** corruption — full-length but invalid (trailing newline stripped). The invalid key clears the CR-guard, so the container stops crash-looping and goes docker-`healthy`. **Monitoring goes all-green — but sync still auth-fails every run.** |
 | 2026-07-21 23:02 | Responder identifies the false-green from inside the container (`ssh-keygen` → "not a key file"; `error in libcrypto`; sync failing) and reports it NOT resolved. |
-| 2026-07-21 23:47 | Sysadmin (independently, during `#458` follow-up work) root-causes the trailing-newline strip in the dev store, validates a known-good key end-to-end, and posts a byte-safe write recipe. |
+| 2026-07-21 23:47 | Sysadmin (independently, during separate dev-environment work) root-causes the trailing-newline strip in the dev store, validates a known-good key end-to-end, and posts a byte-safe write recipe. |
 | 2026-07-21 23:59:44 | lucas42 copies the validated key bytes into the prod store (byte-safe, no `$(...)` capture) and retriggers the deploy (pipeline 1108). |
 | 2026-07-22 00:04:14 | Container recreates with the valid key. Startup sync run: `Sync Complete` (00:04:31). |
 | 2026-07-22 00:04–00:06 | Verified end-to-end: in-container key valid and fingerprint matches the dev-validated one; an ad-hoc idempotent re-run also completes; both monitoring reds clear. **Resolved.** |
@@ -64,9 +64,15 @@ To be precise about what monitoring did and didn't catch: during Round 1's crash
 
 Both are tracked as a class in `lucas42/lucos_schedule_tracker#96`.
 
-### Underlying enabler — no write-time validation in the credential store
+### Underlying enabler — no write-time validation, and a line-oriented transport carrying multi-line secrets
 
-Both corruptions share a signature: the store accepted a malformed value silently, and the damage surfaced elsewhere, later. The store validates neither line-endings nor key material on write. `lucas42/lucos_creds#473` tracks write-time validation; extended to validate SSH-key-typed values (e.g. reject a value that fails `ssh-keygen`), it would have caught *both* rounds at the point of the bad write.
+Both corruptions share a signature: the store accepted a malformed value silently, and the damage surfaced elsewhere, later. Two structural conditions underlie that, and — per architectural review — they are **complementary, not the same problem**:
+
+- **No write-time validation.** The store validates neither line-endings nor value content on write, so a bad value is accepted and only detected downstream. A cheap, type-agnostic reject of bare CR / control characters at the write (`lucas42/lucos_creds#473`) would have caught Round 1 there. *Typed-value* validation (decode-then-`ssh-keygen`) would catch Round 2, but presupposes a value-typing model the store doesn't yet have — a real design decision, tracked separately (see Follow-up Actions).
+
+- **A line-oriented transport carrying inherently multi-line secrets.** The store→shell→container→disk path is line-oriented, but SSH/PEM keys are multi-line: a category mismatch that is the common root of all three corruption modes seen across this incident and the accreted guards (CRLF, header-truncation, trailing-newline-strip). `configy_sync/startup.sh` now carries **three** destination-side guards (CR, `~`, PEM-header) — every one a *detector* that catches corruption *after* transport, not a fix that prevents it. Round 1 tripped the CR guard (loud, good); Round 2's full-length-but-invalid key cleared all three (silent, bad). A growing pile of destination guards that still can't catch a one-byte-short key is the smell that the class is being fought where it's *observed*, not where it *happens*.
+
+The robust direction (architectural follow-up below) is to make key-typed values **single-line for the whole transport** — base64 at rest, decode-and-validate at point of use — which dissolves the transport class at once (estate precedent: `LUCOS_DEPLOY_ENV_BASE64` base64s the entire `.env` for exactly this reason; there are already ≥2 multi-line keys on this path — `CONFIGY_SYNC_PRIVATE_SSH_KEY` and `UI_PRIVATE_SSH_KEY`). Crucially, write-validation and transport-hardening close *different* holes — a correct multi-line key still can't traverse a line-oriented transport intact, and a garbage-that-decodes-to-non-key still stores — so neither alone closes the class.
 
 ---
 
@@ -84,9 +90,11 @@ Both corruptions share a signature: the store accepted a malformed value silentl
 | Action | Issue / PR | Status |
 |---|---|---|
 | Fix monitoring fail-open on silent/forgotten scheduled-job death + liveness-only health checks (the class; 37 checks exposed) | `lucas42/lucos_schedule_tracker#96` | Open (Needs Analysis) |
-| Write-time validation in the credential store — reject CRLF **and** key material that fails to parse (would catch both rounds at the bad write). Refined during this review: **type-aware** dispatch (`ssh-keygen` for SSH keys, `openssl` for RSA/PEM app keys — don't universally reject non-OpenSSH PEMs), paired with a **user-facing rejection message**, and noting server-side validation is a backstop, not a substitute for fixing the write tooling. | `lucas42/lucos_creds#473` | Open |
+| Write-time validation in the credential store — name/identifier validation **plus a cheap type-agnostic reject of bare CR / control characters** (catches Round 1 at the write). Scoped *not* to include typed-value validation, per architectural review. | `lucas42/lucos_creds#473` | Open |
+| Harden multi-line/key-typed secret handling end-to-end — base64 at rest + decode-then-validate at point of use (type-aware `ssh-keygen`/`openssl` dispatch; user-facing rejection message), retiring the `startup.sh` destination-guard accretion. Catches Round 2 and dissolves the transport class. Complementary to `#473`, not covered by it. | lucos-architect authoring — number TBD | Open (to be filed) |
 | Fix the credential UI's CRLF-on-save corruption — the Round 1 write-path defect | `lucas42/lucos_creds#476` (commit `3ce4817`) | Done (closed `#476`; superseded PR `#477`) |
-| Post-save credential readback (fingerprint/line-count) to catch a shape-valid-but-*wrong* value that no mechanical check can — the residual case beyond `#473` | `lucas42/lucos_creds#482` | Open (Awaiting Decision — lucas42 go/no-go; genuinely optional, lower priority than `#473`) |
+| Fix the regression in the shipped `#476` fix (`3ce4817`): undefined POST `value` throws `TypeError`; reinstate the reviewed test coverage that never landed on `main` | `lucas42/lucos_creds#483` | Open |
+| Post-save credential readback (fingerprint/line-count) to catch a shape-valid-but-*wrong* value that no mechanical check can — the residual case beyond validation | `lucas42/lucos_creds#482` | Open (Awaiting Decision — lucas42 go/no-go; genuinely optional) |
 
 ---
 
