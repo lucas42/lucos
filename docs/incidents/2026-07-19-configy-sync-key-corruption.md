@@ -84,8 +84,9 @@ Both corruptions share a signature: the store accepted a malformed value silentl
 | Action | Issue / PR | Status |
 |---|---|---|
 | Fix monitoring fail-open on silent/forgotten scheduled-job death + liveness-only health checks (the class; 37 checks exposed) | `lucas42/lucos_schedule_tracker#96` | Open (Needs Analysis) |
-| Write-time validation in the credential store — extend to reject CRLF **and** key material that fails `ssh-keygen` (would catch both rounds at the bad write) | `lucas42/lucos_creds#473` | Open |
+| Write-time validation in the credential store — reject CRLF **and** key material that fails to parse (would catch both rounds at the bad write). Refined during this review: **type-aware** dispatch (`ssh-keygen` for SSH keys, `openssl` for RSA/PEM app keys — don't universally reject non-OpenSSH PEMs), paired with a **user-facing rejection message**, and noting server-side validation is a backstop, not a substitute for fixing the write tooling. | `lucas42/lucos_creds#473` | Open |
 | Fix the credential UI's CRLF-on-save corruption — the Round 1 write-path defect | `lucas42/lucos_creds#476` (commit `3ce4817`) | Done (closed `#476`; superseded PR `#477`) |
+| Post-save credential readback (fingerprint/line-count) to catch a shape-valid-but-*wrong* value that no mechanical check can — the residual case beyond `#473` | `lucas42/lucos_creds#482` | Open (Awaiting Decision — lucas42 go/no-go; genuinely optional, lower priority than `#473`) |
 
 ---
 
