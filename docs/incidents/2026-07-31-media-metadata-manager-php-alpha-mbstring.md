@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-07-31 |
-| **Duration** | Broken from 07:46 UTC, restored 14:15 UTC (~6h29m). User-visible impact from the first 500 at 13:44 UTC (~31 minutes) |
+| **Duration** | ~6h29m — broken 07:46 UTC, restored 14:15 UTC. First *observed* failure 13:44 UTC; that nothing was observed before then is a property of traffic, not of impact (see Detection) |
 | **Severity** | Complete outage of all field-rendering pages (the site's primary function) |
 | **Services affected** | `lucos_media_metadata_manager` (media-metadata.l42.eu) on avalon. `lucos_media_metadata_api` unaffected. |
 | **Detected by** | User report (lucas42, via team-lead). **Not** by monitoring — the estate board reported 55/55 healthy throughout. |
@@ -86,7 +86,19 @@ This is the same shape as the June mail outage (`2026-06-11-mail-alpine-dovecot2
 
 `/_info` declares one check, `metadata-api`, probing `GET /v3/tracks/1` on the downstream API. That dependency was healthy. The container healthcheck curls the same `/_info`. Neither touches view code, so the service reported itself perfectly well while serving 500s to every user.
 
-This is `/_info` behaving as specified — availability and dependency config, not content-rendering correctness — but the practical consequence is that a total user-facing outage of this service was invisible. The six-hour delay was luck, not detection: the breakage started at 07:46 and was only noticed when someone happened to browse at 13:44.
+This is `/_info` behaving as specified — availability and dependency config, not content-rendering correctness — but the practical consequence is that a total user-facing outage of this service was invisible. The six-hour gap was luck, not detection: the breakage started at 07:46 and was only noticed when someone happened to browse at 13:44. Detection latency wasn't slow; detection *capability* was zero.
+
+### The trap: the obvious remedy would also have gone green
+
+This is the most important paragraph in the report, and it was only implicit until lucos-architect flagged it.
+
+The natural conclusion to draw from everything above is "add a CI job that boots the built image and curls `/_info`" — it's the shape used elsewhere in the estate, and it sounds like it directly addresses "the image was broken and nothing noticed". **It would have passed cleanly through this entire outage.**
+
+`src/html/_info.php` requires `api.php` and nothing else. It never includes `views/field.php`, never renders a field, and never touches any code path that needs `mbstring`. A CI job booting `1.0.129` and curling `/_info` would have got a healthy 200 — exactly as production did for six and a half hours.
+
+The same trap applies to the `FROM app AS test` pattern (lucas42/lucos_eolas), which is otherwise the strongest candidate for the durable fix: running tests inside the shipped image only helps if some test exercises the broken path, and nothing in `tests/Unit/` renders a view. Environment parity and coverage are **independent** requirements, and parity alone would have shipped this outage too.
+
+The generalisable lesson is uncomfortable: a guard that boots the artefact and asks it whether it's well proves only that the artefact can answer questions. It has to be asked to do the thing it exists to do.
 
 ### Aggravating factor: the 500 page said nothing
 
@@ -116,17 +128,25 @@ Two things are worth recording as *deliberately not* done:
 | Action | Issue / PR | Status |
 |---|---|---|
 | **Restore:** revert base image to `php:8.5.8-apache-trixie`, plus a CI guard rejecting alpha/beta/rc base image tags | lucas42/lucos_media_metadata_manager#386 | Done — merged 14:13 UTC |
-| **Durable fix:** run CI tests against the built production image, and add a test that actually renders a view | lucas42/lucos_media_metadata_manager#387 | Open |
-| Give `/_info` a way to notice its own render path is broken (recommended: assert required PHP extensions are loaded) | lucas42/lucos_media_metadata_manager#388 | Open |
-| Add `ErrorDocument 500` so failures render a human-readable page instead of Apache's default | lucas42/lucos_media_metadata_manager#389 | Open |
-| **Estate-wide:** decide on a convention for guarding against auto-merged base-image bumps — third production break of this class, four different repo-local defences, no policy | lucas42/lucos#273 | Open — needs a decision from lucas42 / the architect |
+| **Build-time fix:** run CI tests against the built production image, **and** add a test that renders a view — both halves, since parity without coverage would not have caught this | lucas42/lucos_media_metadata_manager#387 | Ready — High, owner lucos-developer |
+| Give `/_info` a way to notice its own render path is broken — recommendation revised (see below) to *render a field view with a fixed input and assert the expected markup*, rather than asserting an allowlist of required extensions | lucas42/lucos_media_metadata_manager#388 | **Blocked** on lucas42/lucos#273 — Medium, owner lucos-developer |
+| Add `ErrorDocument 500` so failures render a human-readable page instead of Apache's default, with no dependency on the app's own bootstrap/auth/API code | lucas42/lucos_media_metadata_manager#389 | Ready — Medium, owner lucos-ux |
+| **Estate-wide:** decide the convention for guarding against base-image bumps that break at runtime — third production break of this class, four different repo-local defences, no policy | lucas42/lucos#273 | Awaiting Decision — High, owner lucas42 |
+| **Estate-wide `/_info` spec:** a service whose `/_info` checks only describe its *dependencies* cannot report its own failure. Owned by lucos-architect, deliberately **not** filed separately — it is the load-bearing half of the answer to lucas42/lucos#273, and splitting it risks the CI-guard half shipping alone | tracked within lucas42/lucos#273 | Awaiting the lucas42/lucos#273 decision |
+
+**Why lucas42/lucos_media_metadata_manager#388's recommendation changed.** The report originally recommended asserting that required PHP extensions are loaded. lucos-architect argued that an extension allowlist is tuned precisely to the incident that just happened and rots: the next time code calls into an extension nobody thought to list, the check passes and the page 500s again. A check that renders a field view and asserts its markup needs no list, and fails on a missing extension, a broken include, a syntax error or a half-deployed image alike — strictly more coverage for comparable effort. That argument is correct and the recommendation is revised accordingly.
+
+It also changes what kind of decision this is. Asserting loaded extensions sits comfortably inside the existing `/_info` contract; asserting *rendered output* extends that contract into content correctness, which is an estate-wide spec question rather than one repo's implementation detail. That is why the ticket is Blocked on lucas42/lucos#273 rather than Ready — shipping the narrower check now would likely be replaced within weeks. If the decision goes the other way, lucas42/lucos_media_metadata_manager#388 returns to Ready with the original extension-assertion approach unchanged.
+
+The expensive option — an authenticated synthetic prober fetching real pages — remains out of scope on cost grounds under either outcome.
 
 ---
 
 ## Lessons
 
 - **A healthy container is not a working service.** Both the Docker healthcheck and monitoring were satisfied by an endpoint that shares no code with the thing that was broken. When the only check on a service probes its *dependencies*, the service cannot report its own failure.
-- **"It builds" is a weak gate for a base-image change.** Every base-image incident in this estate so far has built cleanly. The distinguishing question is whether anything in CI runs the image, and the answer is per-repo and accidental.
+- **"It builds" is a weak gate for a base-image change.** All three base-image incidents recorded here built cleanly. The distinguishing question is whether anything in CI *exercises* the image, and the answer is per-repo and accidental.
+- **A guard must exercise the thing it's guarding, not merely start it.** Booting the artefact and asking `/_info` whether it's well proves the artefact can answer questions. Both obvious remedies here — a CI `/_info` smoke test, and tests-in-the-shipped-image — would have gone green through this outage.
 - **The quiet failures are the expensive ones.** The June mail outage was the same class of defect and lasted 14 minutes, because it crash-looped loudly. This one lasted hours because it failed politely.
 - **Prefer guards that fail loudly over guards that succeed silently.** A dependabot `ignore` and a CI assertion can both stop a bad bump, but only one of them tells you it's still working. This generalises well beyond base images.
 
