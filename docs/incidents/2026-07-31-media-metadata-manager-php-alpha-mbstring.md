@@ -154,7 +154,11 @@ The expensive option — an authenticated synthetic prober fetching real pages �
 
 ## Sensitive Findings
 
-None — and the reason is slightly stronger than "the pages are access-controlled". Verified by lucos-security against the source:
+**Were sensitive data, credentials, or security-relevant details involved in this incident?**
+
+[x] No — nothing in this report has been redacted.
+
+The reason is slightly stronger than "the pages are access-controlled". Verified by lucos-security against the source:
 
 - The auth gate runs **before** the code that fataled. `src/html/albums.php` calls `require_once("../authentication.php")` and `requireScope("media-metadata:read")` at line 62-63, ahead of the `viewAlbum()` call at line 98 that triggered the fatal; tracks and collections follow the same pattern. So no unauthenticated request could reach the crashing code at all — this isn't "sensitive output that happened to be behind a login", it was unreachable pre-auth.
 - `php.ini-production` is genuinely in use (`RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"` in the Dockerfile) with no `display_errors` override anywhere in the repo, so no stack trace reached any browser. The fatal text stayed in the container log.
