@@ -33,8 +33,10 @@ Resolved by reverting the base image to `php:8.5.8-apache-trixie` (lucas42/lucos
 | ~13:47 | lucas42 reports 500s with no error message, and that nothing is alerting; SRE engaged via team-lead |
 | 13:49 | Live probe: `/_info` returns 200 and healthy; root returns the normal 302 to aithne — the outage is invisible from the endpoints monitoring watches |
 | 13:52 | Root cause identified from the container log; confirmed directly — `php -r 'var_dump(function_exists("mb_strlen"));'` → `bool(false)` in the running container, and `php -m` on the previous image `1.0.128` lists `mbstring` |
-| 14:04 | Hotfix PR lucas42/lucos_media_metadata_manager#386 opened (revert base image + CI guard against pre-release tags) |
-| 14:13:14 | PR approved by lucos-code-reviewer and lucas42, auto-merged; deploy pipeline 985 starts |
+| 13:52:49 | Hotfix PR lucas42/lucos_media_metadata_manager#386 opened (revert base image + CI guard against pre-release tags) |
+| 13:55:06 | PR approved by lucos-code-reviewer (~2 min turnaround) |
+| 13:55 → 14:13 | PR waits on a second approval. The repo is supervised, so agent approval alone cannot merge — ~18 minutes of the resolution time is this wait |
+| 14:13:01 | PR approved by lucas42 → auto-merged 14:13:14; deploy pipeline 985 starts |
 | 14:15:18 | `1.0.130` deployed to avalon, container healthy — **service restored** |
 | ~14:20 | Verified: `mbstring` present, `mb_strlen("composer_name")` → 13, and `views/field.php` renders end-to-end producing the expected `class="key-label long-key"` markup |
 
@@ -88,7 +90,9 @@ This is `/_info` behaving as specified — availability and dependency config, n
 
 ### Aggravating factor: the 500 page said nothing
 
-PHP runs with `php.ini-production`, so `display_errors` is off — correct for production. But `vhost.conf` sets `ErrorDocument 404` with no equivalent for 500, so users got Apache's stock "Internal Server Error" page: no explanation, no branding, no indication whether it was worth retrying or whether anyone knew. This didn't cause the outage, but it made it harder for a user to recognise as reportable, and plausibly contributed to the delay in it being raised.
+PHP runs with `php.ini-production`, so `display_errors` is off — correct for production. But `vhost.conf` sets `ErrorDocument 404` with no equivalent for 500, so users got Apache's stock "Internal Server Error" page: no explanation, no branding, no indication whether it was worth retrying or whether anyone knew. This didn't cause the outage and — on the evidence — didn't measurably delay the report either: the first user-visible 500 was at 13:44:38 and it was reported at ~13:47, a three-minute turnaround. The 6h29m duration is almost entirely the 07:46 → 13:44 window in which nobody hit a field-rendering page at all, which is a monitoring-coverage problem, not a comprehension one.
+
+What the bare page cost was the *quality* of the report rather than its speed. A stock "Internal Server Error" gives the reporter nothing to relay beyond "it's broken" — no indication of which subsystem, whether it's their session, or whether it's worth retrying. That matters for triage even when, as here, the user reports it promptly anyway. (Framing corrected per lucos-ux, who pointed out the original wording claimed a delay the timeline doesn't support.)
 
 ---
 
@@ -100,6 +104,10 @@ Two things are worth recording as *deliberately not* done:
 
 - **No container restart.** Restarting would have achieved nothing: the broken code is the image, and a restart would have re-launched the same one. The reflex "restart first, diagnose second" is wrong when the failure arrived with a deploy.
 - **No Dependabot `ignore` rule as the stopgap.** lucas42/lucos_media_import uses that approach for python pre-releases, but the June mail incident deliberately dropped its equivalent (lucas42/lucos_mail#62) in favour of a verified CI guard, on the grounds that a failing visible check is better signal than a PR that silently never opens. The same reasoning was applied here.
+
+  Worth recording that this reasoning survived a check rather than being assumed. lucos-system-administrator verified the media_import ignore rule against reality: it was added 2026-06-11, its Dockerfile floats on `python:3.14`, Docker Hub has published `3.15.0b3` / `3.15.0b4` / `3.15-rc` since 2026-07-16, and no python Dependabot PR has been opened on that repo in the ~40 days since on a daily schedule. So the ignore syntax **does** work, contrary to the "may fail silently" hedge in its own code comment — an ignore rule is a legitimate mechanism, not a broken one.
+
+  The argument against it is subtler, and is the one that generalises: **a working ignore rule is invisible in effect.** Nothing fails, nothing logs, and nothing would announce it if a registry's pre-release tag format shifted and silently stopped matching the wildcard. We only know it held because someone went and checked Docker Hub by hand. A failing CI check announces breakage; a silently-correct ignore announces nothing either way.
 
 ---
 
@@ -120,9 +128,14 @@ Two things are worth recording as *deliberately not* done:
 - **A healthy container is not a working service.** Both the Docker healthcheck and monitoring were satisfied by an endpoint that shares no code with the thing that was broken. When the only check on a service probes its *dependencies*, the service cannot report its own failure.
 - **"It builds" is a weak gate for a base-image change.** Every base-image incident in this estate so far has built cleanly. The distinguishing question is whether anything in CI runs the image, and the answer is per-repo and accidental.
 - **The quiet failures are the expensive ones.** The June mail outage was the same class of defect and lasted 14 minutes, because it crash-looped loudly. This one lasted hours because it failed politely.
+- **Prefer guards that fail loudly over guards that succeed silently.** A dependabot `ignore` and a CI assertion can both stop a bad bump, but only one of them tells you it's still working. This generalises well beyond base images.
 
 ---
 
 ## Sensitive Findings
 
-None. No credentials, personal data, or security-relevant material were involved — the failing pages are behind aithne authentication and the fatal error text was confined to the container log.
+None — and the reason is slightly stronger than "the pages are access-controlled". Verified by lucos-security against the source:
+
+- The auth gate runs **before** the code that fataled. `src/html/albums.php` calls `require_once("../authentication.php")` and `requireScope("media-metadata:read")` at line 62-63, ahead of the `viewAlbum()` call at line 98 that triggered the fatal; tracks and collections follow the same pattern. So no unauthenticated request could reach the crashing code at all — this isn't "sensitive output that happened to be behind a login", it was unreachable pre-auth.
+- `php.ini-production` is genuinely in use (`RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"` in the Dockerfile) with no `display_errors` override anywhere in the repo, so no stack trace reached any browser. The fatal text stayed in the container log.
+- `vhost.conf` sets only `ErrorDocument 404`, so the 500 was Apache's stock page with no application data path into it.
