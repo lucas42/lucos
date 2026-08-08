@@ -12,7 +12,9 @@
 
 ## Summary
 
-The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow, and `salvare` was unreachable from avalon for 8h35m. The fault is external — an ISP/home-network problem with no lucos-side fix — and it cleared on its own.
+The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow — between one connection in ten and one in five to `staticmedia.l42.eu` and `private.l42.eu` needed a TCP retransmit and took an extra one to three seconds, which in practice means the occasional page or image loading a couple of seconds later than normal. `salvare` was unreachable from avalon for 8h35m. The fault is external — an ISP/home-network problem with no lucos-side fix — and it cleared on its own.
+
+> **TBD pending lucas42's answer:** whether any of that was noticeable in use. Asked via team-lead. This is a single-user system, so the question is answerable rather than a matter of speculation, and either answer belongs here — "nothing observed" is a finding, not a gap.
 
 The reason it is worth a report is not the loss itself but what the estate did with it: **29 monitoring alerts, of which 24 were manufactured by a Node behaviour that converts a recoverable one-second hiccup into a hard failure.** Node's Happy Eyeballs implementation abandons the IPv4 connection attempt after 500 ms, and Linux's first SYN retransmit is at ~1 s — so a single dropped SYN becomes `fetch failed` rather than a slow success. Measured during a live burst: **41% request failure against ~5% packet loss.**
 
