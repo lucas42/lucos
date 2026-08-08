@@ -13,7 +13,9 @@
 
 ## Summary
 
-A deploy intended to recreate `lucos_time_default` — remediation for lucas42/lucos#279, which had found that network silently ignoring its declared `enable_ipv6` for ten weeks — deleted the network and could not recreate it. `lucos_time` and `lucos_dns` both declare `subnet: fd00:2::/64`, both deploy to avalon, and `lucos_dns_default` already held it. Docker refused the allocation, all three deploy attempts failed, and `lucos_time` was left with no network and no container for just under eleven hours.
+`lucos_time_default` was removed, and could not be recreated. This was remediation for lucas42/lucos#279, which had found that network silently ignoring its declared `enable_ipv6` for ten weeks. `lucos_time` and `lucos_dns` both declare `subnet: fd00:2::/64`, both deploy to avalon, and `lucos_dns_default` already held it — so Docker refused the allocation, all three deploy attempts failed, and `lucos_time` was left with no network and no container for just under eleven hours.
+
+**The removal did not happen inside the deploy.** `lucos_deploy_orb`'s `deploy.yml` contains no `docker network rm`, no `docker compose down` and no `docker network prune`, and the failing deploy log shows Compose in the `Creating` state for `lucos_time_default` — which it only enters for a network that is already absent. So the destructive step was taken out of band, before the pipeline ran. That matters for prevention: a gate implemented in the orb would sit on a path this incident never took. See stage 2.
 
 The fix was a one-line change moving `lucos_time` to `fd00:4::/64` (lucas42/lucos_time#352). The collision had been latent since 2026-06-08 and was only reachable because the *other* bug — the one being fixed — had been keeping the two networks apart.
 
@@ -29,6 +31,7 @@ All times UTC. 2026-08-08 unless stated.
 | *2026-06-08* | `dcdeef7` adds `enable_ipv6: true` and `subnet: fd00:2::/64` to `lucos_dns`. `lucos_dns_default` **is** recreated, and claims the subnet. The estate now has two repos declaring the same ULA subnet on the same host, and no way to notice. |
 | *00:00 – 12:20* | Home-link packet loss incident (`2026-08-08-home-link-packet-loss.md`). Its investigation surfaces lucas42/lucos#279 and puts "recreate the three divergent networks" on the follow-up list. |
 | 12:25:06 | Last successful run of the `lucos_time/eolas-cache` scheduled job. |
+| *before 12:28:28* | `lucos_time_default` is removed **out of band** — not by any pipeline. Exact time and command not established; see stage 2. `lucos_time`'s container is removed with it. |
 | **12:28:28** | Pipeline 846 starts, from commit `95201d4` "chore: trigger redeploy to recreate lucos_time_default network". |
 | 12:28:5x | Deploy job 2515 fails three consecutive attempts: `failed to create network lucos_time_default: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space`. The old network is gone; no container is created. **`lucos_time` is now down.** |
 | 12:33:12 | First alert of the incident — and it names the **wrong service**: `1 failing check on lucos media weightings: fetch-info`. |
@@ -49,14 +52,17 @@ All times UTC. 2026-08-08 unless stated.
 
 ### Stage 1 — two repos claimed the same ULA subnet, and nothing could tell
 
-`lucos_time` declared `fd00:2::/64` on 2026-05-22. `lucos_dns` declared the same subnet on 2026-06-08. Both deploy to avalon. Four repos in the estate declare `fd00:*` subnets:
+`lucos_time` declared `fd00:2::/64` on 2026-05-22. `lucos_dns` declared the same subnet on 2026-06-08. Both deploy to avalon. Five repos in the estate declare `fd00:*` subnets — the complete set, from each repo's `origin/main` compose file with hosts from `lucos_configy/config/systems.yaml`:
 
 | Repo | Subnet | Host |
 |---|---|---|
 | `lucos_monitoring` | `fd00:1::/64` | avalon |
 | `lucos_dns` | `fd00:2::/64` | avalon |
-| `lucos_time` | `fd00:2::/64` | avalon — **duplicate** |
+| `lucos_time` | `fd00:2::/64` | avalon — **duplicate** (now `fd00:4::/64`) |
 | `lucos_backups` | `fd00:3::/64` | avalon |
+| `lucos_dns_secondary` | `fd00:3::/64` | xwing |
+
+`lucos_backups` and `lucos_dns_secondary` share `fd00:3::/64` but are on different hosts, and Docker checks pool overlap **per daemon**, so that pair does not collide today. It is on the list because the allocation key is `(host, subnet)` rather than `subnet` — which turns out to matter for what a prevention check would have to look like. Thanks to `lucos-architect` for catching that this row was missing from an earlier draft; an incident report about an allocation collision should not ship an incomplete allocation table, since this is the table readers will treat as the de facto registry.
 
 These allocations are made per-repo, in each repo's own `docker-compose.yml`, with no shared registry and no cross-repo check. The estate has a central registry for volume names (`lucos_configy/config/volumes.yaml`) and one for hosts and domains (`lucos_configy/config/hosts.yaml`, `systems.yaml`); ULA subnets are allocated by whoever is editing a compose file that day. A duplicate is therefore not just possible but unremarkable — the two commits were three weeks apart, in different repos, and neither review had any way to see the other.
 
@@ -64,13 +70,37 @@ These allocations are made per-repo, in each repo's own `docker-compose.yml`, wi
 
 This is the part worth remembering. Because `lucos_time_default` was a 2024-era network that Compose never retrofitted (lucas42/lucos#279), it had no IPv6 subnet at all, so it never contended for `fd00:2::/64`. `lucos_dns_default` was recreated in June and took the subnet uncontested. The two configurations were in direct conflict for ten weeks and produced no symptom, because the defect that made the conflict harmless was the same defect whose remediation would expose it.
 
-So the remediation was not merely risky in the ordinary way. **Deleting the network was the step that converted a dormant conflict into an outage**, and the conflict was invisible to anyone reasoning from the running state — which showed one network holding `fd00:2::/64` and another with no IPv6 at all, exactly as if the allocation were fine.
+So the remediation was not merely risky in the ordinary way. **Removing the network was the step that converted a dormant conflict into an outage**, and the conflict was invisible to anyone reasoning from the running state — which showed one network holding `fd00:2::/64` and another with no IPv6 at all, exactly as if the allocation were fine.
 
-lucas42/lucos#279's own text anticipated the shape of this: it argued the deploy-time gate should "fail loudly and require a human" rather than auto-recreate, because recreating a network stops the containers attached to it. That instinct was right, and if anything this incident argues it should be *stronger* — the failure mode here was not the interruption, it was that the recreate could not succeed at all.
+#### Where the destructive step actually happened
+
+The removal was **not** part of the deploy. Verified two ways:
+
+- `lucas42/lucos_deploy_orb` `src/commands/deploy.yml` on `origin/main` contains no `docker network rm`, no `docker compose down`, no `docker network prune`. Its only destructive operations are `docker compose stop $HOST_SERVICES` — gated on `network_mode: host`, which `lucos_time` does not use — and `docker image prune -f`.
+- The failing deploy log shows Compose in `Network lucos_time_default  Creating`, a state it only enters for a network that is already absent.
+
+So `lucos_time_default` was gone before 12:28:28Z, removed out of band. **When, and by what command, is not established.** I do not have `sudo` on avalon and so could not read the docker daemon journal; an early attempt returned empty output, which reads exactly like "no removal event found" and was in fact "probe cannot run". The best-fitting hypothesis — offered as a hypothesis — is a manual `docker compose down`, which removes containers *and* the network in one command and accounts for both observations at once; a bare `docker network rm` would have failed with the container still attached and so needed a separate stop first. I cannot distinguish them from the evidence available.
+
+This is load-bearing for prevention: **a gate implemented in the deploy orb would sit on a path this incident never took.**
+
+#### What control would actually have prevented it
+
+lucas42/lucos#279 argued the deploy-time gate should "fail loudly and require a human" rather than auto-recreate, on the grounds that recreating a network stops the containers attached to it. Keep that conclusion — but this incident strengthens it by a different argument than the one lucas42/lucos#279 made, and shows it is not sufficient on its own. Both points are `lucos-architect`'s, and they are right on both:
+
+- **lucas42/lucos#279's argument was about cost-of-action** — a brief, planned interruption. The real hazard is that the operation is **non-atomic with no rollback**: remove, then create, and if create fails you have *neither*. That is an unbounded outage, not a brief one, and it is exactly what happened here.
+- **A human gate would not have prevented this one.** A human *did* trigger the recreate, deliberately, and had no better view of subnet allocatability than the orb would have — arguably worse, since the orb runs on the host.
+
+The control that works is a **precondition on the destructive step itself**: before removing a network, prove the declared config is allocatable on that host. It is cheap, non-destructive, and already proven — it is the same probe used during this incident to rule out IPv4 pool exhaustion:
+
+```
+docker network create --ipv6 --subnet <declared> lucos-preflight-tmp && docker network rm lucos-preflight-tmp
+```
+
+Two things worth stating alongside it, because the probe alone bounds probability rather than consequence. First, **record the live network's config before removing it** (`docker network inspect -f '{{json .IPAM.Config}} {{.EnableIPv6}}'`), so a failed create can be rolled back to the previous working state — that is what turns an unbounded outage into a brief interruption. Second, the probe **false-fails if the target network already holds its own declared subnet**, so it must never be generalised into "delete first, then probe". Both are folded into the pre-flight agreed with `lucos-system-administrator` for the two remaining recreations.
 
 ### Stage 3 — the first alert pointed at the wrong service
 
-The incident's first alert, at 12:33:12, was `lucos_media_weightings: fetch-info` — seven minutes before `lucos_time` itself alerted, and describing weightings as unreachable when it was entirely healthy.
+The incident's first alert fired at 12:33:12 and named `lucos_media_weightings: fetch-info`. `lucos_time` — the service that was actually down — did not alert until 12:40:37, seven minutes **later**. For those seven minutes the estate's only signal described a completely healthy service as unreachable.
 
 `lucos_media_weightings`' `/_info` makes an in-band call to `am.l42.eu` with a 1.0s timeout (its `time-api-reachable` check). `lucos_monitoring` allows `/_info` exactly 1.0s (`lucas42/lucos_monitoring` `src/fetcher_info.erl:238`). With `lucos_time` hard down the probe spent its full timeout, pushing `/_info` to ~1.07s, and monitoring reported `HTTP Request timed out` — i.e. "weightings is unreachable".
 
@@ -91,6 +121,16 @@ Monitoring alerted at 12:40:37, twelve minutes after the failed deploy. Nothing 
 The ten hours were response latency. This estate has no paging: alerts land in Loganne and on the dashboard, and the mechanism that turns an alert into action is a scheduled SRE ops check. That is a deliberate trade for a single-operator personal estate, and mostly the right one — but it means the effective time-to-response for anything that breaks outside an ops-check window is "until the next ops check", and for a hard-down service that is worth naming rather than absorbing silently.
 
 No follow-up is being filed for this. Adding paging to a personal estate is a decision about how the operator wants to be interrupted, not a defect, and it is not mine to make.
+
+### Which way Docker failed, and why that was the good outcome
+
+It is worth being explicit that the platform behaved correctly, because the rest of this report reads as unrelieved bad news and that is not the whole picture.
+
+Docker's IPAM overlap check is what refused the allocation. It failed **closed on isolation** and **open on availability** — we got an eleven-hour outage instead of two service stacks quietly sharing an address range. Per `lucos-security`, that ordering matters more than it looks: `lucos_dns` is a two-container stack in which `sync` has **no `ports:` mapping**, so it is unreachable from the host network, and per `references/network-topology.md` that isolation rests on Docker's per-network boundary rather than on any application-layer auth. A successful overlapping allocation would have put a question mark over exactly that boundary.
+
+`lucos-security` hedges the mechanism explicitly, and so does this report: their working hypothesis is that a successful overlap would more likely produce further confusing packet loss (the host routing table cannot cleanly hold two identical prefixes, so NDP fails to resolve on the wrong segment) than a reliable cross-stack channel — with a narrower misdelivery case possible if both stacks allocated a container the same address. **This has not been tested against libnetwork's actual behaviour and should not be read as established.**
+
+The reliability lesson stands regardless of which mechanism is right: an outage is the *preferable* failure here, and a prevention control should aim to stop the duplicate being written rather than to make the overlap survivable.
 
 ---
 
@@ -115,8 +155,12 @@ Everything else worked first time: the CircleCI log named the cause verbatim, an
 | Move `lucos_time` to `fd00:4::/64` | lucas42/lucos_time#352 | Done (merged, deployed `1.0.118`) |
 | Root-cause writeup and estate subnet inventory | lucas42/lucos_time#351 | Done (closed) |
 | Get the 1.0s in-band dependency probe out of `lucos_media_weightings`' `/_info` request path | lucas42/lucos_media_weightings#277 | Open |
+| Register ULA subnet allocations in `lucos_configy` + enforce via a `lucos_repos` convention | lucas42/lucos#282 | Open |
+| Group/de-emphasise dependent failures on the dashboard, so N shadows don't read as N incidents | lucas42/lucos_monitoring#296 | Open |
+| Timeout `debug` strings must name target and configured budget — stated as a convention | lucas42/lucos_monitoring#297 | Open |
 | Detect Docker networks whose live config diverges from declared compose config | lucas42/lucos#279 | Open — **see note below** |
 | Restore IPv6 egress on the remaining divergent networks | lucas42/lucos#278 | Open — **see note below** |
+| Mosquitto passwords-file ownership warning (unrelated, spotted during Check 4) | lucas42/lucos_locations#109 | Open (filed by `lucos-system-administrator`) |
 
 **Note for whoever executes the remaining network recreations.** Two networks from lucas42/lucos#279's table have not yet been recreated: `lucos_monitoring_default` (avalon) and `lucos_dns_secondary_default` (xwing). Both will hit the same code path that broke `lucos_time`.
 
@@ -124,9 +168,19 @@ Everything else worked first time: the CircleCI log named the cause verbatim, an
 - `lucos_dns_secondary` declares `fd00:3::/64` on **xwing**. `lucos_backups` holds `fd00:3::/64` on **avalon**. Different hosts, so no collision — but the estate now has the same ULA subnet on two hosts by accident rather than design, which is worth a decision rather than a shrug.
 - Verified by direct probe of both hosts at 2026-08-08 23:1xZ: avalon carries `fd00:2::/64` (`lucos_dns`) and `fd00:3::/64` (`lucos_backups`); xwing carries **no** `fd00:*` network at all. `fd00:4::/64` was free on both, which is why `lucos_time` got it. Re-probe before relying on this — it is a snapshot, not a registry.
 
-### Deliberately not filed
+- The pre-flight agreed with `lucos-system-administrator` is: sweep declared subnets across the host's full repo set → **allocatability probe** (`docker network create --ipv6 --subnet <declared> tmp && docker network rm tmp`) → **record the live network's config for rollback** → remove → redeploy → verify. `dns_secondary` on xwing first, `lucos_monitoring` on avalon last. On failure: restore from the recorded config, then stop and escalate — do **not** let CI retry blindly, since three identical failures was itself the signal on `lucos_time`.
+- While `lucos_monitoring` is down, the orb's `PUT monitoring.l42.eu/suppress/$REPO` fails open (`|| true`), so **every other service's deploy silently loses alert suppression** in that window. Don't overlap deploys with it, and don't read a quiet dashboard as health — confirm from off-avalon.
 
-**A duplicate-ULA-subnet check, or a central subnet registry.** The gap is real and this incident is what it costs. But there are two quite different answers — a `lucos_repos` convention check (cheap, build-time, no runtime tax, input is four lines of YAML across four repos, and a failure is directly actionable: pick another subnet) versus a `lucos_configy` allocation registry alongside `volumes.yaml` (more work, but allocations become deliberate rather than merely non-conflicting). Picking between them is a design call that overlaps substantially with the "where does estate-wide deploy verification belong" question already open on lucas42/lucos#279, and filing a third ticket would fragment it. The full reasoning is in lucas42/lucos_time#351's Prevention section so that whoever takes lucas42/lucos#279 has it to hand.
+### Resolved during review — the prevention design
+
+The first draft of this report left the prevention question unfiled, on the grounds that choosing between a `lucos_repos` convention check and a `lucos_configy` allocation registry was a design call overlapping lucas42/lucos#279. **That was wrong on both counts**, and `lucos-architect` corrected it during review:
+
+- It is **not** the same question as lucas42/lucos#279. That issue is *runtime divergence* — declared config that never took effect. This is *author-time allocation conflict* between two declarations each individually valid. Different failure, different detection point, different home. Folding them would have meant lucas42/lucos#279 could not close until a registry shipped.
+- It is **not** a genuine fork, because the check-alone option does not stand up: Docker checks overlap per daemon, so the allocation key is `(host, subnet)` — a pure duplicate-detector over compose files would need the host mapping, which lives in configy. The check needs the registry regardless.
+
+Now filed as lucas42/lucos#282, with the registry-plus-convention design and `lucos-architect`'s reasoning attributed. Recorded here rather than quietly amended, because "I deliberately didn't file this" is a claim a reader should be able to see retracted.
+
+### Deliberately not filed
 
 **A monitoring check for `/_info` response time against the poller's budget.** Tempting after stage 3, and rejected. It would need a per-service latency budget to be meaningful, would fire hardest on exactly the days the estate is already noisy with real alerts, and would detect a condition that is self-clearing and costs only diagnostic confusion. A line in the `/_info` spec — that the endpoint must return well inside the poller's 1s budget, and therefore must not make live calls with timeouts near it — costs one paragraph and catches the next instance at review time instead. Raised as a suggestion in lucas42/lucos_media_weightings#277 rather than as a ticket.
 
