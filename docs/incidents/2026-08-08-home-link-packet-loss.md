@@ -16,9 +16,11 @@ The home broadband link that fronts **xwing** and **salvare** began dropping rou
 
 > **TBD pending lucas42's answer:** whether any of that was noticeable in use. Asked via team-lead. This is a single-user system, so the question is answerable rather than a matter of speculation, and either answer belongs here — "nothing observed" is a finding, not a gap.
 
-The reason it is worth a report is not the loss itself but what the estate did with it: **29 monitoring alerts, of which 24 were manufactured by a Node behaviour that converts a recoverable one-second hiccup into a hard failure.** Node's Happy Eyeballs implementation abandons the IPv4 connection attempt after 500 ms, and Linux's first SYN retransmit is at ~1 s — so a single dropped SYN becomes `fetch failed` rather than a slow success. Measured during a live burst: **41% request failure against ~5% packet loss.**
+The reason it is worth a report is not the loss itself but what the estate did with it: **29 monitoring alerts, of which 17 were manufactured by a Node behaviour that converts a recoverable one-second hiccup into a hard failure.** Node's Happy Eyeballs implementation abandons the IPv4 connection attempt after 500 ms, and Linux's first SYN retransmit is at ~1 s — so a single dropped SYN becomes `fetch failed` rather than a slow success. Measured during a live burst: **41% request failure against ~5% packet loss.**
 
-That amplifier is real, is ours, and is being fixed at the root (lucas42/lucos#278). Investigating it also uncovered that three Docker networks have been silently ignoring their declared `enable_ipv6` configuration since 2026-05-22 (lucas42/lucos#279), which is *why* the amplifier had anything to bite on.
+That amplifier is real, is ours, and is being fixed at the root (lucas42/lucos#278). Investigating it also uncovered that three Docker networks have been silently ignoring their declared `enable_ipv6` configuration since 2026-05-22 (lucas42/lucos#279), which is why **`lucos_time`** in particular was exposed.
+
+> **Correction, 2026-08-08 after review.** An earlier draft attributed **24** alerts to the amplifier by including `lucos_media_seinn`'s 7. `lucos-architect` challenged that on the grounds that seinn probes `ceol.l42.eu` on avalon, a path measured at 0/80 retransmits — and they were right. Checking seinn's own logs settles it: **74 probe failures today, 100% of them `The operation was aborted due to timeout` at 799–823 ms, and zero `UND_ERR_CONNECT_TIMEOUT`.** Those are the 800 ms `AbortSignal` firing, not the 500 ms Happy Eyeballs guillotine. The confirmed figure is **17**, all from `lucos_time`. See "The seinn alerts" below for what they were instead.
 
 ---
 
@@ -71,9 +73,9 @@ Corroborated independently by a subsystem with no connection to the HTTP checks:
 
 ### Stage 2 — the amplifier: Happy Eyeballs, and three networks that ignored their own config
 
-Of the 29 alerts, **24 came from two Node checks** — `lucos_time`'s `media` (17) and `lucos_media_seinn`'s `media-manager` (7). Those are the amplified ones. The remaining 5 (`lucos_static_media` and `lucos_private` `fetch-info`, `lucos_private` `tls-certificate`, `lucos_backups` `host-tracking-failures`) are ordinary packet-loss failures in Erlang and Python code paths, not Node.
+Of the 29 alerts, **17 are confirmed amplified** — all from `lucos_time`'s `media` check. 5 (`lucos_static_media` and `lucos_private` `fetch-info`, `lucos_private` `tls-certificate`, `lucos_backups` `host-tracking-failures`) are ordinary packet-loss failures in Erlang and Python code paths, not Node. The remaining 7 are `lucos_media_seinn`'s and are a separate story — see below.
 
-The Node failures presented as `TypeError: fetch failed`, `cause.code = UND_ERR_CONNECT_TIMEOUT`, at a very tight modal latency of **508–517 ms** — while a raw `net.connect()` to the same host milliseconds later succeeded in ~20 ms.
+The `lucos_time` failures presented as `TypeError: fetch failed`, `cause.code = UND_ERR_CONNECT_TIMEOUT`, at a very tight modal latency of **508–517 ms** — while a raw `net.connect()` to the same host milliseconds later succeeded in ~20 ms.
 
 500 ms is Node's `autoSelectFamilyAttemptTimeout` default. Linux's first SYN retransmit is at ~1 s. So Node abandons the IPv4 attempt half a second before the kernel would have recovered it for free. Interleaved A/B during a live burst, n=70 per arm:
 
@@ -85,7 +87,26 @@ autoSelectFamily=false                       :  4 failures  (5.7%)
 
 This only bites when the target is **dual-stack** *and* the caller has **no IPv6 egress** — with a single address family there is no race and the attempt timer never fires. Both conditions held: every l42.eu service subdomain is dual-stack by construction (the zone generator emits a CNAME to a host record carrying AAAA), and the calling containers had no IPv6.
 
-**The second condition should not have been true.** `lucos_time_default`, `lucos_monitoring_default` and `lucos_dns_secondary_default` have all declared `enable_ipv6: true` since 2026-05-22 and were all running with `EnableIPv6=false`. Docker Compose attaches to a network that already exists and does not retrofit changed attributes onto it; the two avalon networks were created **2024-04-28** and never recreated. So a deliberate, reviewed, merged configuration change sat unapplied for ten weeks, with a green deploy and a clean `docker compose config` either way, and nothing detecting the divergence. That is tracked separately as lucas42/lucos#279.
+**For `lucos_time`, the second condition should not have been true.** `lucos_time_default`, `lucos_monitoring_default` and `lucos_dns_secondary_default` have all declared `enable_ipv6: true` since 2026-05-22 and were all running with `EnableIPv6=false`. Docker Compose attaches to a network that already exists and does not retrofit changed attributes onto it; the two avalon networks were created **2024-04-28** and never recreated. So a deliberate, reviewed, merged configuration change sat unapplied for ten weeks, with a green deploy and a clean `docker compose config` either way. That is tracked separately as lucas42/lucos#279.
+
+**"Nothing detected it for ten weeks" is not quite right, and the true version is more useful.** Per `lucos-system-administrator`, the divergence on both avalon networks **was spotted on 2026-06-08** while working lucas42/lucos_backups#307. It was assessed at the time as harmless — "neither needs IPv6 to reach its targets" — and no issue was raised, because against the risk being considered that was correct. The Happy Eyeballs amplifier does not care whether a container has a *reason* to use IPv6; it bites on the absence of IPv6 egress **at all**, which is a different question from the one that was asked. So the real failure is not that a manual check never happened: it is that a correct-at-the-time assessment was made once, ad hoc, against a risk model that later changed, and was not persisted anywhere a second person or a future check would encounter it. A detection gate would have re-raised it every deploy regardless of the earlier judgement — which is a stronger argument for lucas42/lucos#279 than "nobody looked".
+
+**The divergence is not the whole exposure, though**, and it would be convenient but wrong to imply otherwise. Per `lucos-architect`, of the seven services running Node in their final image **only `lucos_time` declares `enable_ipv6` at all** — the other six sit on networks that never declared it, so there is nothing there to diverge *from*. Restoring the three divergent networks fixes one service of seven. Extending IPv6 to the rest is a new decision rather than a restoration, and is deliberately not being folded into lucas42/lucos#278.
+
+That has a consequence for how the fix is described: **setting the Node attempt timeout explicitly is not merely defence-in-depth.** For six of the seven Node services it is the only protection against this failure mode unless that separate decision is taken. The estate-convention question is tracked at lucas42/lucos_repos#483.
+
+### The seinn alerts — caused by the incident, but not by the amplifier, and the mechanism is unestablished
+
+`lucos_media_seinn`'s `media-manager` check probes `https://ceol.l42.eu/` with an 800 ms `AbortSignal`. `ceol.l42.eu` resolves to avalon — the same host seinn runs on — and that path measured **0/80 retransmits** throughout. So the amplifier should not apply, and the logs confirm it doesn't:
+
+- **74 probe failures on 2026-08-08**, every one `The operation was aborted due to timeout` at **799–823 ms**.
+- **Zero** `UND_ERR_CONNECT_TIMEOUT` or `fetch failed` in the container all day.
+
+So these are the 800 ms budget being exceeded, not the 500 ms Happy Eyeballs guillotine.
+
+They are nonetheless *part of this incident*, and the correlation is hard to dismiss: the container has run since 2026-08-07 07:48, and it logged **zero** such failures across ~16 hours of 2026-08-07 against **74** today, spanning 00:xx to **12:16:41Z** — trailing off exactly as the link cleared.
+
+**I could not establish the mechanism, and am recording that rather than supplying a plausible one.** `ceol.l42.eu` is avalon-local and measured clean; `lucos_media_manager`'s only configured outbound target is `media-api.l42.eu`, also on avalon, so the obvious "media_manager was blocked on a lossy xwing fetch" story has no supporting configuration. What remains is a strong temporal correlation with no demonstrated causal path — which is precisely the shape of claim this report elsewhere argues should not be dressed up as a cause. Related open tickets: lucas42/lucos_media_seinn#583 and lucas42/lucos_media_manager#283 (media_manager runs with no GC or safepoint logging, so a stall of this kind currently leaves no evidence behind).
 
 ### Stage 3 — detection was slower than it should have been
 
@@ -126,9 +147,12 @@ Nothing in the estate was positioned to detect it: host CPU is not a monitoring 
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Restore IPv6 egress on the three divergent Docker networks so a lost SYN costs ~500 ms instead of the request; then set the Node attempt timeout explicitly | lucas42/lucos#278 | Open (Ready) |
+| Restore IPv6 egress on the three divergent Docker networks; set the Node attempt timeout explicitly (the load-bearing half for six of the seven Node services) | lucas42/lucos#278 | Open (Ready) |
 | Detect Docker networks whose live config diverges from their declared compose config, at deploy time | lucas42/lucos#279 | Open (Ready) |
+| Decide whether the Node attempt timeout becomes an estate convention — the only protection for the six Node services with no IPv6 declaration to restore | lucas42/lucos_repos#483 | Open (needs lucas42) |
+| Count `buffering` in the monitoring summary and record how long a check has been in it — the stage-3 blindness | lucas42/lucos_monitoring#295 | Open |
 | Log `error.cause.code` in `lucos_time`'s `media` check — the bare `fetch failed` string cost hours of this investigation | lucas42/lucos_time#348 | Open |
+| Give `lucos_media_manager` GC/safepoint logging, so a stall of the kind that plausibly produced the 74 seinn probe failures leaves evidence behind | lucas42/lucos_media_manager#283 | Open |
 | Prevention rule for orphaned SSH background jobs | `references/ssh-production.md` (committed) | Done |
 | Probe-discipline rule for the plausible-subset failure mode | `agents/sre-ops-checks.md` (committed) | Done |
 
@@ -137,9 +161,11 @@ Nothing in the estate was positioned to detect it: host CPU is not a monitoring 
 Two things a reader might expect to see here, and why they are absent:
 
 - **A check for the external link itself.** The fault is on infrastructure we neither own nor can fix, and it self-resolved. A monitoring check would tell us something we would learn anyway from the consumer-side alerts, at the cost of a permanent per-path config surface and a new class of alert nobody can action. The right response to an ISP fault is to notice it quickly and wait, not to instrument it.
-- **An alert-rate anomaly detector** (stage 3, factor 2). It would genuinely have caught this hours earlier, and it is the most tempting follow-up in this report — but it is also a significant new capability with real false-positive risk, and it is not the cheapest fix for the actual delay. Fixing lucas42/lucos#278 removes 24 of the 29 alerts at source. If a comparable alert storm recurs *after* that lands, this becomes worth revisiting with evidence rather than in anticipation.
+- **An alert-rate anomaly detector** (stage 3, factor 2). It would genuinely have caught this hours earlier, and it is the most tempting follow-up in this report — but it is a significant new capability with real false-positive risk, and a cheaper change (below) targets the same blindness more directly.
 
-What *has* been recorded instead is the concrete trap: **`summary.failing == 0` is not "all well"** — read the per-system `status` field, because `buffering` means failing-but-not-yet-past-threshold. That is now in the SRE ops-check notes.
+  > **The reasoning here was corrected during review, and the original version was backwards.** An earlier draft argued the detector could wait *because* fixing lucas42/lucos#278 removes most of the alerts at source. `lucos-architect` pointed out that this is an argument about **volume**, while the stage-3 problem is **detection** — removing 17 alerts means the next equivalent twelve-hour fault presents as ~12 rather than 29, which is *quieter*, not louder. So lucas42/lucos#278 makes this detection gap marginally **worse**, and the detector's value goes **up**. It is still not being built, but on cost-and-false-positive grounds alone, not because the problem is shrinking.
+
+Instead, one follow-up **has** been filed against stage 3, because it targets the actual blindness for a fraction of the cost: **making sustained `buffering` visible** (lucas42/lucos_monitoring#295). Four systems sat in `buffering` for twelve hours while `summary.failing` read `0`. A check flapping into buffering for one poll and a check continuously buffering for twelve hours are different events, and only the second needs anyone's attention. That distinction is a much smaller change than anomaly detection over alert history, and it does not depend on lucas42/lucos#278 landing first. Credit to `lucos-architect` for the suggestion — recording the `failing: 0` trap in the SRE ops-check notes fixes it for agents who read those notes, and for nobody else.
 
 ---
 
