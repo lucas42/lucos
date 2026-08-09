@@ -96,7 +96,31 @@ The control that works is a **precondition on the destructive step itself**: bef
 docker network create --ipv6 --subnet <declared> lucos-preflight-tmp && docker network rm lucos-preflight-tmp
 ```
 
-Two things worth stating alongside it, because the probe alone bounds probability rather than consequence. First, **record the live network's config before removing it** (`docker network inspect -f '{{json .IPAM.Config}} {{.EnableIPv6}}'`), so a failed create can be rolled back to the previous working state — that is what turns an unbounded outage into a brief interruption. Second, the probe **false-fails if the target network already holds its own declared subnet**, so it must never be generalised into "delete first, then probe". Both are folded into the pre-flight agreed with `lucos-system-administrator` for the two remaining recreations.
+Two things worth stating alongside it, because the probe alone bounds probability rather than consequence.
+
+**First, record the live network's config before removing it** (`docker network inspect -f '{{json .IPAM.Config}} {{.EnableIPv6}}'`), so a failed create can be rolled back to the previous working state. That is what turns an unbounded outage into a brief interruption.
+
+**And the restore command is not the obvious one.** I proposed `docker network create --subnet <recorded> <name>`. `lucos-system-administrator` rehearsed it on a disposable project — at `lucos-architect`'s insistence that an unrehearsed rollback path is not a rollback path — and **it does not work**: `docker compose up` refuses to adopt a network it does not recognise as its own and exits 1. Compose-created networks carry identifying labels; a bare `docker network create` produces none. Verified on avalon:
+
+```
+$ docker network inspect -f '{{json .Labels}}' lucos_time_default
+{"com.docker.compose.network":"default","com.docker.compose.project":"lucos_time","com.docker.compose.version":"2.27.2"}
+$ docker network create sre_label_probe && docker network inspect -f '{{json .Labels}}' sre_label_probe
+{}
+```
+
+The working form supplies them:
+
+```
+docker network create --subnet <recorded> \
+  --label com.docker.compose.network=default \
+  --label com.docker.compose.project=<project> \
+  <project>_default
+```
+
+This is the single most useful thing to come out of the follow-on work, and it exists only because someone insisted on executing the recovery path rather than reasoning about it. My untested version would have failed at the exact moment it was needed — during an outage, after the destructive step, with no other way back. That is the same class of error as the incident itself: a destructive operation whose failure mode nobody had exercised.
+
+**Second, the probe false-fails if the target network already holds its own declared subnet**, so it must never be generalised into "delete first, then probe". Per `lucos-architect`, the constructive form removes the trap structurally rather than relying on anyone remembering it: **inspect the live network first, then branch.** If it already holds the declared subnet, it is not divergent and must not be touched. Only if it is divergent — no IPv6, or a different subnet — is the declared subnet genuinely unallocated and the probe valid.
 
 ### Stage 3 — the first alert pointed at the wrong service
 
@@ -149,6 +173,10 @@ It cleared on its own at about 23:57. The whole episode was **four minutes**; fi
 Two things make this worse than an ordinary wrong guess. **I had a background watcher polling the dashboard while I wrote the issue** — it printed `ALL GREEN` minutes later; I filed against a snapshot while a time series was being collected in the next terminal. And monitoring had logged `Warm-up: skipping alert for "lucos_monitoring" on first poll`, which I read, used to establish the restart time, and drew no conclusion from.
 
 **For the next person recreating a network — this is the reusable part.** A container restarting onto a newly-created network will behave oddly for a few minutes. Verify immediately the two things that are immediately true (container healthy, network matches its declaration), then **leave the behavioural probe until the dust settles, and measure twice with a gap before believing anything.** Note this cuts directly against the advice I first gave: a dual-stack probe run straight after the recreate would have returned the alarming numbers and given every reason to roll back a change that was working correctly.
+
+**A rollback recipe I asserted without testing.** I proposed `docker network create --subnet <recorded> <name>` as the restore step, in this report and in the pre-flight agreed with `lucos-system-administrator`. It does not work — `docker compose up` will not adopt a network lacking its own labels. It was caught because `lucos-architect` insisted the path be rehearsed before it counted ("an untested rollback path is not a rollback path") and `lucos-system-administrator` rehearsed it on a disposable project. The corrected command is in stage 2.
+
+Three of my four errors tonight share a shape: I asserted something I had not executed — a duration, a persistence claim, a recovery command. The probe-discipline habit in `agents/sre-ops-checks.md` covers *observations* well and did real work today. It says nothing about **claims of the form "and if X fails, do Y"**, which are predictions about a path nobody has walked.
 
 **Arithmetic.** The outage was reported as "~21 hours" in lucas42/lucos_time#351, in lucas42/lucos_time#352, and to team-lead, before being corrected to 10h52m. The independent figure that disproved it — `eolas-cache` reporting "38555 seconds ago", i.e. 10.7h — was quoted in the same paragraph as the wrong number and not reconciled against it. The relevant discipline ("reconcile the parts against an independent total") is already in `agents/sre-ops-checks.md` and was applied to the DNS probe forty minutes earlier in the same session, then not applied to a duration. Corrected publicly rather than silently edited, since the figure had already been relayed onward.
 
