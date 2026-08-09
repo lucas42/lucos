@@ -85,6 +85,8 @@ Of the 29 alerts, **17 are confirmed amplified** — all from `lucos_time`'s `me
 
 The `lucos_time` failures presented as `TypeError: fetch failed`, `cause.code = UND_ERR_CONNECT_TIMEOUT`, at a very tight modal latency of **508–517 ms** — while a raw `net.connect()` to the same host milliseconds later succeeded in ~20 ms.
 
+> **One deliberate gap in the plumbing, per `lucos-developer`.** It is not verified whether `UND_ERR_CONNECT_TIMEOUT` is undici's *own* connect-timeout timer (default 10s standalone — a different mechanism entirely) or undici re-labelling a Node-level `autoSelectFamily` race under that code. Settling it means reading the undici source for this Node version, which nobody has done. **The causal claim does not rest on it:** the modal latency sits at ~510 ms and nowhere near 10s, and the A/B below varies the timeout and re-measures. The error code is corroborating detail, not the evidence.
+
 500 ms is Node's `autoSelectFamilyAttemptTimeout` default. Linux's first SYN retransmit is at ~1 s. So Node abandons the IPv4 attempt half a second before the kernel would have recovered it for free. Interleaved A/B during a live burst, n=70 per arm:
 
 ```
@@ -161,6 +163,7 @@ Nothing in the estate was positioned to detect it: host CPU is not a monitoring 
 | Count `buffering` in the monitoring summary and record how long a check has been in it — the stage-3 blindness | lucas42/lucos_monitoring#295 | Open |
 | Log `error.cause.code` in `lucos_time`'s `media` check — the bare `fetch failed` string cost hours of this investigation | lucas42/lucos_time#348 | Open |
 | Give `lucos_media_manager` GC/safepoint logging, so a stall of the kind that plausibly produced the 74 seinn probe failures leaves evidence behind | lucas42/lucos_media_manager#283 | Open |
+| Stop `lucos_media_seinn`'s media-manager check discarding its own measured latency, which left the 74 probe failures undiagnosable after redeploy | lucas42/lucos_media_seinn#583 | Open |
 | Prevention rule for orphaned SSH background jobs | `references/ssh-production.md` (committed) | Done |
 | Probe-discipline rule for the plausible-subset failure mode | `agents/sre-ops-checks.md` (committed) | Done |
 
