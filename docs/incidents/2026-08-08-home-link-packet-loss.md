@@ -12,7 +12,7 @@
 
 ## Summary
 
-The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow — between one connection in ten and one in five to `staticmedia.l42.eu` and `private.l42.eu` needed a TCP retransmit and took an extra one to three seconds, which *would* mean the occasional page or image loading a couple of seconds later than normal — a derivation from the retransmit measurements, not an observation of anyone's experience. `salvare` was unreachable from avalon for 8h35m. The fault is external — an ISP/home-network problem with no lucos-side fix — and it cleared on its own.
+The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow — between one connection in ten and one in five to `staticmedia.l42.eu` and `private.l42.eu` needed a TCP retransmit and took an extra one to three seconds, which *would* mean the occasional page or image loading a couple of seconds later than normal — a derivation from the retransmit measurements, not an observation of anyone's experience. `salvare` was unreachable from avalon for 8h35m. The fault is external to lucos, with no lucos-side fix, and it cleared on its own. **Its cause was not established** — an ISP or home-network equipment problem is the natural reading and probably right, but it was assumed rather than shown; see the note in stage 1.
 
 > **Was it noticeable in use?** Asked of lucas42 via team-lead, and answered — relayed verbatim, hedges and all:
 >
@@ -68,6 +68,8 @@ The loss is on the home broadband link itself, in **both** directions, and not o
 | `178.32.218.44:443` (avalon, public) | 0 ms | 1 ms | 0 / 80 |
 | `8.8.8.8:53` | 5 ms | 5 ms | 0 / 80 |
 | `1.1.1.1:443` | 7 ms | 12 ms | 0 / 80 |
+
+> **What this establishes, and what it does not.** The probe isolates *where* the loss is — the home WAN link, both directions, cleanly separated from avalon's transit. It says nothing about *why*. **Causation was not established beyond "external to lucos": a malicious cause, whether targeted or incidental, was not ruled out — only judged unlikely.** An ISP or home-network equipment fault is the natural reading and is probably right, but the report assumed it rather than concluded it, and the distinction is worth stating because that link fronts production infrastructure (xwing, salvare) with no DDoS mitigation in front of it. Raised by `lucos-security` when asked to pressure-test whether "ISP problem, nothing to do" was ending an investigation prematurely. It was.
 
 Slow connects clustered at **1028–1048 ms** and **3038–3065 ms** — Linux's SYN retransmit backoff (1 s, then 3 s), which is a fingerprint of dropped SYNs rather than general slowness.
 
@@ -166,7 +168,9 @@ Nothing in the estate was positioned to detect it: host CPU is not a monitoring 
 
 Two things a reader might expect to see here, and why they are absent:
 
-- **A check for the external link itself.** The fault is on infrastructure we neither own nor can fix, and it self-resolved. A monitoring check would tell us something we would learn anyway from the consumer-side alerts, at the cost of a permanent per-path config surface and a new class of alert nobody can action. The right response to an ISP fault is to notice it quickly and wait, not to instrument it.
+- **A check for the external link itself.** The fault is on infrastructure we neither own nor can fix, and it self-resolved. A monitoring check would tell us something we would learn anyway from the consumer-side alerts, at the cost of a permanent per-path config surface and a new class of alert nobody can action. The right response to an external link fault is to notice it and wait, not to instrument it.
+
+  > **The "we'd learn it anyway" half of that rests on a premise that is not true yet.** Per `lucos-security`: stage 3 shows detection here took ~11 hours because of the buffering blindness, so today the honest word is *eventually*, not *quickly*. That argument holds once lucas42/lucos_monitoring#295 lands and sustained buffering becomes visible; until then, consumer-side alerts are a slow signal, not a fast one. The decision not to instrument the link stands on its own — the fault is unactionable either way — but it should not be justified by a detection speed the estate does not currently have.
 - **An alert-rate anomaly detector** (stage 3, factor 2). It would genuinely have caught this hours earlier, and it is the most tempting follow-up in this report — but it is a significant new capability with real false-positive risk, and a cheaper change (below) targets the same blindness more directly.
 
   > **The reasoning here was corrected during review, and the original version was backwards.** An earlier draft argued the detector could wait *because* fixing lucas42/lucos#278 removes most of the alerts at source. `lucos-architect` pointed out that this is an argument about **volume**, while the stage-3 problem is **detection** — removing 17 alerts means the next equivalent twelve-hour fault presents as ~12 rather than 29, which is *quieter*, not louder. So lucas42/lucos#278 makes this detection gap marginally **worse**, and the detector's value goes **up**. It is still not being built, but on cost-and-false-positive grounds alone, not because the problem is shrinking.
