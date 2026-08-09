@@ -12,9 +12,15 @@
 
 ## Summary
 
-The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow — between one connection in ten and one in five to `staticmedia.l42.eu` and `private.l42.eu` needed a TCP retransmit and took an extra one to three seconds, which in practice means the occasional page or image loading a couple of seconds later than normal. `salvare` was unreachable from avalon for 8h35m. The fault is external — an ISP/home-network problem with no lucos-side fix — and it cleared on its own.
+The home broadband link that fronts **xwing** and **salvare** began dropping roughly 11–20% of packets at ~00:00Z and stayed degraded for about twelve hours. Services hosted behind that link stayed *up* but became intermittently slow — between one connection in ten and one in five to `staticmedia.l42.eu` and `private.l42.eu` needed a TCP retransmit and took an extra one to three seconds, which *would* mean the occasional page or image loading a couple of seconds later than normal — a derivation from the retransmit measurements, not an observation of anyone's experience. `salvare` was unreachable from avalon for 8h35m. The fault is external — an ISP/home-network problem with no lucos-side fix — and it cleared on its own.
 
-> **TBD pending lucas42's answer:** whether any of that was noticeable in use. Asked via team-lead. This is a single-user system, so the question is answerable rather than a matter of speculation, and either answer belongs here — "nothing observed" is a finding, not a gap.
+> **Was it noticeable in use?** Asked of lucas42 via team-lead, and answered — relayed verbatim, hedges and all:
+>
+> > "I think I noticed a little bit of degratation, but I wasn't focusing on it very much."
+>
+> **Read that as "possibly, mildly, unmeasured" — not as confirmation of user impact.** It is one subjective, retrospective impression, given roughly a day later by someone who had no reason to be watching for it, with no measurement behind it. "I think", "a little bit" and "wasn't focusing on it very much" are the substance of the answer, not softening around it.
+>
+> It is recorded because the question was worth asking and a hedged answer is still an answer — this is a single-user system, so it is the only user-side evidence that exists. But it is *not inconsistent with* mild user-visible degradation rather than evidence of it, and it should not be used to argue severity in either direction. If a later reader wants a sentence to cite about user impact, this is not that sentence.
 
 The reason it is worth a report is not the loss itself but what the estate did with it: **29 monitoring alerts, of which 17 were manufactured by a Node behaviour that converts a recoverable one-second hiccup into a hard failure.** Node's Happy Eyeballs implementation abandons the IPv4 connection attempt after 500 ms, and Linux's first SYN retransmit is at ~1 s — so a single dropped SYN becomes `fetch failed` rather than a slow success. Measured during a live burst: **41% request failure against ~5% packet loss.**
 
