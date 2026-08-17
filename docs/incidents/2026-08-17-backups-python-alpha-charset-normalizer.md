@@ -57,7 +57,9 @@ Two things about this incident are worth more attention than the bug itself. The
 | 22:46:13 | `monitoringRecovery` — all checks healthy. |
 | ~22:52 | Ad-hoc `refresh-config` and `refresh-tracking` runs confirmed successful against schedule-tracker (ages 21s and 7s, 0 errors). |
 | ~23:07 | Ad-hoc `create-backups` run executed end-to-end on the new interpreter — real archives created and distributed to aurora, salvare and xwing. Killed two-thirds through by the invoking command's own 540s timeout; left no partial state. |
-| ~23:20 | `lucos_repos` `stale-dependabot-prs` clears on the next audit sweep. Estate returns to **55/55 healthy, 0 failing, 0 unknown**. |
+| ~23:20 | `lucos_repos` `stale-dependabot-prs` clears — not by the automatic sweep, but because `lucos-system-administrator` triggered `POST /api/pr-sweep` by hand. (That check is fed by a separate 6-hourly `PRSweeper` which `POST /api/sweep` does not touch; the automatic run was not due until ~04:30.) Estate returns to **55/55 healthy, 0 failing, 0 unknown**. Unrelated to this incident. |
+| 23:46:33 | lucas42/lucos_backups#394 merged — CI now runs the suite inside the built image and rejects pre-release base image tags (lucas42/lucos_backups#393). |
+| 23:48:42 | `1.4.35` deployed. Published image verified as the production target — `CMD=[./scripts/startup.sh]`, zero pytest packages, Python 3.14.6 — and healthy with `RestartCount=0`. |
 
 ---
 
