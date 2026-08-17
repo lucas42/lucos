@@ -100,6 +100,17 @@ Three consequences, in ascending order of importance:
 2. **The obvious remediation was a no-op.** lucas42/lucos_backups#390's original diagnosis, reasoning from the commit history, attributed the break to the `charset-normalizer` bump in #389 and proposed reverting or pinning it. That was a reasonable read of the evidence available and it was wrong: pinning a file the build does not read changes nothing.
 3. **The repo cannot tell you what is deployed.** Every Dependabot lockfile PR here is decorative. Filed as lucas42/lucos_backups#392; note the fix shipped today does *not* address this — production is still running 3.5.1 against a lock that says 3.5.0.
 
+**The precise mechanism, reproduced by `lucos-architect` after this report's first draft** (lucas42/lucos_backups#392), is worse than "it re-resolves" and explains why the image is self-contradictory rather than merely stale:
+
+1. `RUN pip install pipenv` is **unpinned**, so the build gets whatever pipenv is current that day.
+2. The committed `Pipfile.lock`'s `_meta.hash` does not match what that pipenv computes from the committed `Pipfile`.
+3. `pipenv install` treats a hash mismatch as "lock is stale" and **silently re-locks** — resolving the whole graph fresh from PyPI, exit code 0, no warning.
+4. `COPY src /usr/src/app`, which runs *after* the install, then overwrites the re-locked file with the committed one. The shipped image therefore carries a lockfile describing **neither** what pipenv resolved **nor** what is installed.
+
+And the drift is far older than this incident: pipenv 2026.7.1 computes a different hash from the committed one for the *previous* `Pipfile` too, so **neither lock has ever matched**. The build has been re-resolving on every build for as long as that skew has existed — the 11-day latency belongs to the alpha base image, not to this. (Which tool produced the committed hashes is unconfirmed; the effect is reproduced.)
+
+That also makes the fix two lines rather than one — pin pipenv as well as adding `--deploy` — since otherwise the estate is one pipenv release away from red builds on repos nobody touched.
+
 `lucos-security`'s framing of this is stronger than the reproducibility one and is worth stating in its own right: because the build re-resolves on every commit, there is **no code-review gate at all** between a package publishing on PyPI and that code executing on a host holding production SSH credentials. Dependabot exists to provide precisely that gate, and it is being silently routed around. This is not specific to `lucos_backups` — an estate sweep found **8 of 8** Python repos installing without a lockfile-enforcing flag (lucas42/lucos_repos#488), though the *consequence* is confirmed by artefact inspection only for `lucos_backups`.
 
 ### Stage 4 — a failed deploy leaves the service broken, not unchanged
@@ -206,6 +217,7 @@ The response-time gap in Stage 6 is the one finding I'd expect to generate a fol
 - **To watch something that oscillates, compare a monotonic counter — don't sample the state.** Sampling gives a phase-dependent answer, and a tolerance rule ("any of the last N succeeded") then converts one lucky sample into a green check. A false recovery is worse than silence: it argues the problem is fixing itself.
 - **A guard keyed to the wrong clock is absent exactly when it's needed.** `lucos_docker_health`'s stuck-starting threshold exists to catch a container that never comes up, and a container restarting every 4.5 seconds resets its clock faster than it can fire.
 - **Reason from the artefact, not the commit log.** The commit history pointed convincingly at the `charset-normalizer` bump. Reading the lockfile and the installed package *out of the built image* took one command and pointed somewhere else entirely.
+- **With a re-resolving build, two builds of the same commit are not the same artefact — so the forensic trail points at the wrong thing.** This is the sharper version of "a failed deploy is not a safe deploy": during the incident, reverting or pinning the offending package would have changed nothing, and anyone reasoning from the committed lockfile was reading a file the build never used. A build that isn't reproducible isn't just an operational risk; it makes the evidence lie.
 
 ---
 
