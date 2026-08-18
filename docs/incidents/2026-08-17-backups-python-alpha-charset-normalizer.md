@@ -20,7 +20,7 @@ On 2026-08-17 the trap sprang. `charset_normalizer` 3.5.1 had been published to 
 
 For 15 hours and 24 minutes no host was backed up, and the 15:25 UTC `create-backups` run did not happen. Resolved by reverting the base image to `python:3.14.6-alpine` (lucas42/lucos_backups#391).
 
-**On the data impact, stated precisely, because the headline number overstates it.** `create-backups` carries a 20-hour skip-if-fresh threshold, so the twice-daily cron (03:25 and 15:25) is effectively *once* daily with the second slot as a safety net. The 03:25 run completed successfully at 03:26, before the outage began, and the next ran at 03:25 the following morning — so the interval between completed backups stayed within the normal ~24h cadence. **The data risk was real but not realised**; had the outage continued another 4.5 hours, a genuine daily cycle would have been lost. What *was* lost is the safety-net run, and it was a real loss rather than a no-op: the marker that would have caused it to skip lives in `/var/run` inside the container (no volume is mounted), so the 07:21 recreate destroyed it and a healthy 15:25 run would have performed a full backup.
+**On the data impact, stated precisely, because the headline number overstates it.** `create-backups` carries a 20-hour skip-if-fresh threshold, so the twice-daily cron (03:25 and 15:25) is effectively *once* daily with the second slot as a safety net. The 03:25 run completed successfully at 03:26, before the outage began, and the next completed at 00:44 the following morning — a full ad-hoc pass run to verify the fix — so the interval between completed backups was **21h18m**, inside the normal ~24h cadence. **The data risk was real but not realised**; had the outage continued another 4.5 hours, a genuine daily cycle would have been lost. What *was* lost is the safety-net run, and it was a real loss rather than a no-op: the marker that would have caused it to skip lives in `/var/run` inside the container (no volume is mounted), so the 07:21 recreate destroyed it and a healthy 15:25 run would have performed a full backup.
 
 Two things about this incident are worth more attention than the bug itself. Monitoring did its job — it alerted 11 minutes after the failure — yet the outage still ran 15 hours, because detection and response are not the same thing. And the build **does not honour `Pipfile.lock`**, which is why a commit that touched only a GitHub Actions workflow file was sufficient to detonate it.
 
@@ -70,6 +70,9 @@ Two things about this incident are worth more attention than the bug itself. Mon
 | ~23:20 | `lucos_repos` `stale-dependabot-prs` clears — not by the automatic sweep, but because `lucos-system-administrator` triggered `POST /api/pr-sweep` by hand. (That check is fed by a separate 6-hourly `PRSweeper` which `POST /api/sweep` does not touch; the automatic run was not due until ~04:30.) Estate returns to **55/55 healthy, 0 failing, 0 unknown**. Unrelated to this incident. |
 | 23:46:33 | lucas42/lucos_backups#394 merged — CI now runs the suite inside the built image and rejects pre-release base image tags (lucas42/lucos_backups#393). |
 | 23:48:42 | `1.4.35` deployed. Published image verified as the production target — `CMD=[./scripts/startup.sh]`, zero pytest packages, Python 3.14.6 — and healthy with `RestartCount=0`. |
+| **2026-08-18** 00:15:47 | lucas42/lucos_backups#395 merged — `pipenv install --deploy`, pipenv pinned to `2026.7.1`, lock regenerated (closes lucas42/lucos_backups#392). |
+| 00:19:43 | lucas42/lucos_backups#397 merged — `target: production` pinned in `docker-compose.yml`, so the shipped stage no longer depends on Dockerfile ordering alone. |
+| 00:22:39 → 00:44:49 | **Full `create-backups` pass verified end-to-end** on the fixed image: 124 archives, `errors=0`, `Backups Complete`, schedule-tracker `age` reset to 11s. |
 
 ---
 
@@ -110,7 +113,9 @@ Three consequences, in ascending order of importance:
 
 1. **A workflow-file edit became an outage.** Pipeline 816 bumped `github/codeql-action` and nothing else. It still rebuilt, still re-resolved, and still shipped the poisoned image. Its deploy failed at 07:23:04 — *before* the `charset-normalizer` lockfile PR had deployed at all.
 2. **The obvious remediation was a no-op.** lucas42/lucos_backups#390's original diagnosis, reasoning from the commit history, attributed the break to the `charset-normalizer` bump in #389 and proposed reverting or pinning it. That was a reasonable read of the evidence available and it was wrong: pinning a file the build does not read changes nothing.
-3. **The repo cannot tell you what is deployed.** Every Dependabot lockfile PR here is decorative. Filed as lucas42/lucos_backups#392; note the fix shipped today does *not* address this — production is still running 3.5.1 against a lock that says 3.5.0.
+3. **The repo cannot tell you what is deployed.** Every Dependabot lockfile PR here was decorative. Filed as lucas42/lucos_backups#392; the base-image fix that ended the outage did *not* address it, and for several hours afterwards production ran `charset_normalizer` 3.5.1 against a lock that said 3.5.0.
+
+   **Since fixed, the same night** (lucas42/lucos_backups#395, merged 00:15Z): pipenv pinned to `2026.7.1`, `pipenv install --deploy`, and the lock regenerated. Verified on the deployed image `1.4.37` — the lock now pins `charset-normalizer==3.5.1` and 3.5.1 is what is installed. They agree for the first time.
 
 **The precise mechanism, reproduced by `lucos-architect` after this report's first draft** (lucas42/lucos_backups#392), is worse than "it re-resolves" and explains why the image is self-contradictory rather than merely stale:
 
@@ -189,7 +194,14 @@ Copying …                                              … to /srv/backups/hos
 Rsyncing snapshot of lucos_photos_photos … on aurora
 ```
 
-**Caveat, so this isn't read as more than it is:** that ad-hoc run did not complete — it was killed about two-thirds through by the 540-second timeout on the command running it, not by any fault. So the mechanism is verified against every host and both strategies; a full 36-volume pass is not. It left nothing behind (the lock is `flock` on an open descriptor and died with the process; schedule-tracker still read `create-backups ok=true, errors=0`; no partial-state file survived), and the 03:25 scheduled run proceeded normally.
+That first attempt did **not** complete — it was killed about two-thirds through by the 540-second timeout on the command invoking it, not by any fault, and left nothing behind (the lock is `flock` on an open descriptor and died with the process).
+
+- **A complete `create-backups` pass has since been verified end-to-end**, so this report does not rest on the partial run. Executed 00:22:39 → 00:44:49 UTC on 2026-08-18 via `docker exec -d` — detached at the Docker layer, running the exact command `crond` runs, so no command timeout applies. Confirmed from three independent sources:
+  - **schedule-tracker:** `create-backups` `age` reset from 75,589s to **11s**, `ok=true`, `errors=0`. The script only reports success once every host and every repository has completed without a single failure, so a degraded run is distinguishable from a clean one.
+  - **Loganne:** `124 archives successfully backed up`.
+  - **The run's own log:** 405 lines, terminating in `Backups Complete`, with **zero** error, traceback, failure or host-unreachable lines; `last_success` written at 00:44.
+
+  A knock-on worth recording: writing `last_success` puts the marker inside the 20-hour freshness threshold at 03:25, so that scheduled run logged a no-op success rather than repeating the work. That is the safety net behaving as designed — and the no-op still exercises crond → script → schedule-tracker, so the scheduler path stayed verified even though the backup work was skipped.
 
 Worth recording, since it was found while checking that: `last_success` and `create.lock` live in `/var/run/lucos_backups/` **inside the container, with no volume mounted**, so every deploy wipes them and the next run always does a full backup rather than skipping. That behaviour is fail-safe — it errs toward backing up — so it is noted as a mechanism, not filed as a defect.
 
@@ -200,9 +212,9 @@ Worth recording, since it was found while checking that: `last_success` and `cre
 | Action | Issue / PR | Status |
 |---|---|---|
 | **Restore:** revert base image to `python:3.14.6-alpine`, with a comment at the point of the mistake | lucas42/lucos_backups#391 | Done — merged 22:42 UTC |
-| **Reproducibility:** `pipenv install` → `pipenv install --deploy` so the build installs what the lock pins and fails loudly when it can't | lucas42/lucos_backups#392 | Open |
-| **CI guard:** run the test suite inside the built image — CI passed on this commit because `test` runs on `cimg/python:3.14`, not the artefact we ship. Validated against the broken image | lucas42/lucos_backups#393 | Open |
-| **Estate-wide reproducibility:** convention requiring Python Dockerfiles to install from the lockfile — **8 of 8** Python repos currently re-resolve at build time | lucas42/lucos_repos#488 | Open |
+| **Reproducibility:** `pipenv install` → `pipenv install --deploy` so the build installs what the lock pins and fails loudly when it can't | lucas42/lucos_backups#392 | **Done** — lucas42/lucos_backups#395, merged 00:15Z 08-18. Also pinned `pipenv==2026.7.1`, and lucas42/lucos_backups#397 pinned `target: production` in compose |
+| **CI guard:** run the test suite inside the built image — CI passed on this commit because `test` runs on `cimg/python:3.14`, not the artefact we ship. Validated against the broken image | lucas42/lucos_backups#393 | **Done** — lucas42/lucos_backups#394, merged 23:46Z. Also rejects pre-release base-image tags |
+| **Estate-wide reproducibility:** convention requiring Python Dockerfiles to install from the lockfile — none of the 8 live Python repos enforce it; 3 re-resolve today and the other 5 agree with their lock only by coincidence of which unpinned pipenv the build installs | lucas42/lucos_repos#488 | Awaiting Decision |
 | **Deploy containment:** a failed deploy leaves the service down, and re-running the last-green pipeline does not roll back | lucas42/lucos_deploy_orb#192 | Open |
 | **Estate-wide:** decide the convention for base-image bumps that break at runtime. Fourth break of this class; the CI guard built for the third (lucas42/lucos_media_metadata_manager#386) was never rolled out | lucas42/lucos#273 | Awaiting Decision — evidence from this incident added as a comment |
 | **Alert volume:** one CircleCI API outage sent 596 alert emails in a day against a 1–4 baseline; propose coalescing alerts that share a cause | lucas42/lucos_monitoring#302 | Open — same-day, adjacent rather than causal |
