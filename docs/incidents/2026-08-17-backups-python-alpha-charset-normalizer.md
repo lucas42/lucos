@@ -22,7 +22,17 @@ For 15 hours and 24 minutes no host was backed up, and the 15:25 UTC `create-bac
 
 **On the data impact, stated precisely, because the headline number overstates it.** `create-backups` carries a 20-hour skip-if-fresh threshold, so the twice-daily cron (03:25 and 15:25) is effectively *once* daily with the second slot as a safety net. The 03:25 run completed successfully at 03:26, before the outage began, and the next ran at 03:25 the following morning — so the interval between completed backups stayed within the normal ~24h cadence. **The data risk was real but not realised**; had the outage continued another 4.5 hours, a genuine daily cycle would have been lost. What *was* lost is the safety-net run, and it was a real loss rather than a no-op: the marker that would have caused it to skip lives in `/var/run` inside the container (no volume is mounted), so the 07:21 recreate destroyed it and a healthy 15:25 run would have performed a full backup.
 
-Two things about this incident are worth more attention than the bug itself. The build **does not honour `Pipfile.lock`**, which is why a commit that touched only a GitHub Actions workflow file was sufficient to detonate it. And monitoring did its job — it alerted 11 minutes after the failure — yet the outage still ran 15 hours, because detection and response are not the same thing.
+Two things about this incident are worth more attention than the bug itself. Monitoring did its job — it alerted 11 minutes after the failure — yet the outage still ran 15 hours, because detection and response are not the same thing. And the build **does not honour `Pipfile.lock`**, which is why a commit that touched only a GitHub Actions workflow file was sufficient to detonate it.
+
+---
+
+> ### The finding this report treats as central
+>
+> **Every alerting mechanism worked correctly.** Monitoring alerted 11 minutes after the container broke, escalated to four failing checks, propagated to `lucos_docker_health`, and every alert email was accepted by Gmail with zero bounces. Nothing was suppressed, lost, or mistuned.
+>
+> **The outage still ran 15h24m, because nothing converts a correct alert into a person acting on it.** It ended when a scheduled ops check happened to look.
+>
+> That also qualifies the previous report in this series, which concluded that "the quiet failures are the expensive ones". This one was loud in every available channel and lasted more than twice as long. Loudness is not the variable; whether anyone is listening is. Stage 6 has the full argument, and Stage 5 explains how the observer made it *harder* to hear.
 
 ---
 
