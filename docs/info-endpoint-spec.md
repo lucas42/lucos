@@ -29,6 +29,7 @@ Strongly encouraged for full ecosystem integration. Consumers must handle their 
 |---|---|---|---|
 | `ci` | object | `{}` | CI metadata. Currently only `ci.circle` (string, CircleCI project slug e.g. `"gh/lucas42/lucos_example"`) is consumed. |
 | `title` | string | Falls back to `system` | Human-readable display name for the service. |
+| `version` | string | _(none)_ | The version of the service currently running, as a [semver 2.0.0](https://semver.org) string. |
 
 ### Tier 3: Frontend services only
 
@@ -107,6 +108,7 @@ A frontend service with health checks and metrics:
     "circle": "gh/lucas42/lucos_example"
   },
   "title": "Example",
+  "version": "1.20.17",
   "icon": "/icon",
   "show_on_homepage": true,
   "network_only": true,
