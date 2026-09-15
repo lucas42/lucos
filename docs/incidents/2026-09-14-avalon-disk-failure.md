@@ -1,11 +1,11 @@
 # Incident: avalon's single disk failed — estate-wide outage and emergency data rescue
 
-> **DRAFT — the incident is not yet resolved.** Sections marked **TBD** are to be completed once OVH has replaced the disk and avalon has been rebuilt and restored. Source issue: **lucas42/lucos#294**.
+> **DRAFT — the incident is not yet resolved.** The disk has been replaced and avalon's rebuild is under way, tracked on lucas42/lucos#296. Sections marked **TBD** are to be completed once the restore is finished and verified end to end. Source issue: **lucas42/lucos#294**.
 
 | Field | Value |
 |---|---|
 | **Date** | 2026-09-14 |
-| **Duration** | Onset ~07:55 UTC on 2026-09-14. **Ongoing:** avalon has been out of service since ~19:21 UTC that day. End time TBD, pending rebuild. |
+| **Duration** | Onset ~07:55 UTC on 2026-09-14. **Ongoing:** avalon has been out of service since ~19:21 UTC that day. The disk was replaced and the host reinstalled on 2026-09-15, and the rebuild is in progress. End time TBD. |
 | **Severity** | Complete outage (every avalon-hosted service) + data risk |
 | **Services affected** | Everything hosted on avalon, which is nearly the whole estate. That includes aithne (login), contacts, eolas, arachne, media (metadata, manager, seinn, weightings), photos, locations, notes, creds, worlds, backups, loganne, schedule-tracker, monitoring, the `l42.eu` router and DNS primary. Services on xwing/salvare kept running, but lost their dependencies on avalon. |
 | **Detected by** | Monitoring alerts from ~07:55 UTC (delivered by email). First acted on by an SRE ops check at 12:15 UTC. |
@@ -18,7 +18,7 @@ avalon runs every one of its services from a **single spinning hard disk with no
 
 Once engaged, the team avoided anything that would write to the disk. lucas42 booted the server into OVH rescue mode that evening, and the data was copied from a read-only mount to xwing, then to salvare. **Every critical database was recovered and verified as a working database**, including lucas42's lucos_worlds edits up to 00:16 UTC on the 14th, which no backup contained. One database file, media_metadata, had unreadable sectors: it was repaired, with only 2 rows restored from the previous day's backup.
 
-The disk now awaits replacement by OVH, and avalon a rebuild and restore. **(TBD: resolution.)**
+Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all**, because CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon. That dictates the order of the restore, and it is covered under "Rebuild" below. The restore is in progress. **(TBD: resolution.)**
 
 ---
 
@@ -51,8 +51,13 @@ All times UTC.
 | 23:47–23:55 | Host config and the unique 2025-01-06 yearly backup set copied. |
 | 2026-09-15 00:00 | SMART read: 29 pending, 109 offline-uncorrectable sectors, 15,558 logged errors. |
 | 00:09–00:12 | The emergency-backups directory is copied to salvare and verified by sha256. |
-| TBD | OVH replaces the disk. |
-| TBD | avalon rebuilt, and data restored from the emergency backups. |
+| 2026-09-15, by 22:03 | **Kimsufi replace the disk**, and lucas42 reinstalls the host: Debian trixie 13.7, same IPv4 address. He provisions it from his own host-setup notes rather than lucas42/lucos#296's Step 1, so that step is not a record of what was done. |
+| 2026-09-15 | avalon serves **freshly generated SSH host keys**, not the rescued ones. Deliberate, and the fallback lucas42/lucos#296's Step 1 allows. Confirmed three ways (live `ssh -vvv`, an isolated `ssh-keyscan`, and the earlier fingerprint report). |
+| 23:02 | lucas42 reports host provisioning done, and asks for one service to be deployed as a pipeline test. |
+| 23:21 | **`lucos_root` deploys to the rebuilt avalon and answers on `/_info`.** The deploy pipeline works. The only failing step is the loganne deploy log, since loganne is also on avalon and not yet up. |
+| 23:21–23:28 | The test surfaces a blocker: CI fetches every project's credentials from `creds.l42.eu`, on avalon, for both builds and deploys. lucas42/lucos#296's Step 3 order (`lucos_configy` → `lucos_dns` → `lucos_creds`) therefore cannot run as written. A revised sequence is proposed. |
+| 2026-09-16 | lucas42 approves the revised sequence: `lucos_creds` first, via its CI bypass, with its store restored immediately after, then `lucos_configy`, DNS, the router, the firewall and the rest. The sysadmin works down it. (Time not recorded; relayed by team-lead.) |
+| TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
 ---
@@ -112,6 +117,22 @@ I don't know when the drive's damage began accumulating. SMART's counts carry no
 
 avalon is the primary nameserver for `l42.eu`, `s.l42.eu`, `lukeblaney.co.uk`, `rowanblaney.co.uk` and `tfluke.uk`. The secondary last synced at 2026-09-14 07:09:51, and the SOA `expire` is 28 days. **Unless a primary is back by 2026-10-12 07:09:51 UTC, all five zones stop resolving.** lucas42 expects the rebuild to land well before then, so no follow-up issue has been filed. The deadline is recorded on lucas42/lucos#294.
 
+### Rebuild: nothing in the estate can build or deploy while `creds.l42.eu` is down
+
+This was found by lucos-system-administrator during the one-service pipeline test on 2026-09-15, and it is the most significant finding of this incident after the disk itself. I have verified the mechanism against `lucas42/lucos_deploy_orb` `main`:
+
+- **Deploys:** `src/commands/deploy.yml` fetches the project's production envfile with `scp … docker-deploy@creds.l42.eu:$CIRCLE_PROJECT_REPONAME/production/.env`, unless `LUCOS_DEPLOY_ENV_BASE64` is set as a CircleCI project variable. The bypass exists in the orb for any project, but the sysadmin checked the CircleCI API and only `lucos_creds` actually has it set.
+- **Builds:** `src/jobs/build.yml` calls `fetch-publish-creds` unconditionally, which scps `lucos_deploy_orb/publish/.env` from the same host. There is no bypass at all on this path.
+
+`lucos_creds` runs on avalon. So for as long as avalon is down, **no project in the estate can build**, and only `lucos_creds` itself can deploy. The estate's ability to ship code — including any fix for the outage in progress — depends on the host that is down. It is a bootstrap circular dependency, and it appeared at the exact moment it was most expensive.
+
+Two practical consequences:
+
+- **The restore order is forced.** lucas42/lucos#296's original Step 3 sequence began with `lucos_configy` and `lucos_dns`, neither of which could deploy before `lucos_creds`. The approved sequence now starts with `lucos_creds`, restoring its store immediately after it boots so the window in which it serves fresh, wrong credentials stays short.
+- **A workaround exists, and it is worth knowing.** CircleCI's selective job rerun redeploys a service from an already-published image, skipping the build step and its credential fetch entirely. That is how `lucos_root` was deployed for the test, reusing its last pre-incident pipeline.
+
+This is the same concentration risk as the disk, in a different layer: the estate's credential store, its CI dependency, its DNS primary, its monitoring and its alerting all live on one machine. The disk failure made all five fail together.
+
 ### Response: corrections made along the way
 
 These are recorded so the report shows what actually happened, not a tidied version:
@@ -135,7 +156,16 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 ## Resolution
 
-**TBD.** This section is to be written once OVH has replaced the disk and avalon has been rebuilt and restored. The rebuild and restore procedure lives in lucos-system-administrator's runbook, lucas42/lucos#296. The data comes from the emergency-backups directory described above. Verification must include a **triggered `create-backups` run**, not just green `/_info`s.
+**TBD — in progress.** The rebuild and restore procedure lives in lucos-system-administrator's runbook, lucas42/lucos#296, and the data comes from the emergency-backups directory described above.
+
+Landed so far:
+
+- Kimsufi replaced the failed disk, and lucas42 reinstalled avalon on Debian trixie 13.7 at the same IPv4 address, working from his own host-setup notes rather than the runbook's Step 1.
+- The host serves fresh SSH host keys rather than the rescued ones, which is the fallback the runbook allows.
+- The deploy pipeline is confirmed working end to end, by deploying `lucos_root` and fetching its `/_info`.
+- lucas42 has approved a restore sequence that starts with `lucos_creds`, for the reason set out under "Rebuild" above.
+
+Still to come: the restore itself, service by service, and then verification. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
@@ -143,11 +173,16 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| OVH/Kimsufi disk replacement | external support ticket (lucas42) | Waiting on OVH |
-| Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | Open (awaiting lucas42's decision) |
+| OVH/Kimsufi disk replacement | external support ticket (lucas42) | Done — replaced 2026-09-15 |
+| Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | In progress — host reinstalled and the deploy pipeline confirmed; the restore is running |
 | Decide the rebuilt avalon's disk layout (RAID or a second disk?) | lucas42/lucos#296 (runbook, item 2) | Decided: **stays single-disk for now**, as the server is mid-way through a year-long contract. Revisit at renewal. This raises the value of lucas42/lucos_docker_health#118. |
-| Delete the copied SSH host keys (`rescue/avalon-ssh-host-keys/`) from xwing and salvare once they're installed on the rebuilt avalon | lucas42/lucos#296 | Open (after the rebuild) |
-| Rotate credentials possibly exposed on the departing disk: the lucos_creds `server_key` and the aithne credential store (not avalon's OS-level host keys, which are being reused) | lucas42/lucos#298 | Open (Blocked on lucas42/lucos#296) |
+| Delete the copied SSH host keys (`rescue/avalon-ssh-host-keys/`) from xwing and salvare. The rebuilt host generated fresh keys, so these will never be installed | lucas42/lucos#296 | Open — no longer waiting on anything |
+| Correct the emergency-backups README, which still names the rescued host-key fingerprint as the one to expect | lucas42/lucos#296 | Open |
+| Clear avalon's old host key wherever a `known_hosts` still holds it | lucas42/lucos#296 | Open — the sysadmin found no `lucos-agent` entries on xwing or salvare; `~lucos-backups/.ssh/known_hosts` needs root to check |
+| Rotate credentials possibly exposed on the departing disk: the lucos_creds `server_key` and the aithne credential store. avalon's OS-level host keys are moot, as the rebuild generated fresh ones | lucas42/lucos#298 | Open (Blocked on lucas42/lucos#296) |
+| Decide what to do about CI being unable to build or deploy anything while `creds.l42.eu` is down | lucas42/lucos#299 | Open (decision) |
+| Reconcile lucas42's own host-setup notes with lucas42/lucos#296's Step 1 into one runbook, marking which steps are his and which the agents' | lucas42/lucos#296 | Open (suggested, after the rebuild) |
+| Restore avalon's swapfile to its previous size (~512 MB now, against roughly 4.5 GB before) | lucas42/lucos#296 | Open — flagged by the sysadmin; `lucos_photos_worker` and `redis` were the known memory consumers |
 | Build tooling to rotate the lucos_creds master `data_key` | lucas42/lucos_creds#565 | Open |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
 | Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) |
@@ -165,4 +200,4 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 [x] Yes — see note below.
 
-The rescued data includes the **credential store** (`lucos_creds_store`, including its key files), the **aithne credential store**, and host account `authorized_keys` files. They're stored only in `~lucos-agent/emergency-backups-2026-09-14/` on xwing and salvare, where both the home directory and the folder are mode 700. avalon's **SSH host keys** (private) were also copied, on 2026-09-15 at lucas42's request, into `rescue/avalon-ssh-host-keys/` in the same folder, with files at 600. On 2026-09-15 lucas42 decided, on lucos-architect's advice, that the rebuild keeps the hostname `avalon` and reuses the ed25519, ecdsa and rsa pairs (lucas42/lucos#296). The copies are to be deleted from xwing and salvare once the keys are installed on the rebuilt host. `/etc/shadow` and all other private keys were deliberately **not** copied. No credential values appear in this report or in the linked issues.
+The rescued data includes the **credential store** (`lucos_creds_store`, including its key files), the **aithne credential store**, and host account `authorized_keys` files. They're stored only in `~lucos-agent/emergency-backups-2026-09-14/` on xwing and salvare, where both the home directory and the folder are mode 700. avalon's **SSH host keys** (private) were also copied, on 2026-09-15 at lucas42's request, into `rescue/avalon-ssh-host-keys/` in the same folder, with files at 600. On 2026-09-15 lucas42 decided, on lucos-architect's advice, that the rebuild would keep the hostname `avalon` and reuse the ed25519, ecdsa and rsa pairs (lucas42/lucos#296). **In the event, the rebuilt host generated fresh keys instead** — the fallback that runbook allows — so the rescued private keys were never reinstalled. They are therefore now the only copies of keys belonging to a host that no longer exists, and should be deleted from xwing and salvare rather than waiting on an install that will not happen. Two consequences follow: the emergency-backups README still names the rescued fingerprint as the one to expect and needs correcting, and anything holding avalon's old host key in a `known_hosts` file will refuse to connect until that entry is cleared. `/etc/shadow` and all other private keys were deliberately **not** copied. No credential values appear in this report or in the linked issues.
