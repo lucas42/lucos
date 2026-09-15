@@ -145,7 +145,7 @@ These are recorded so the report shows what actually happened, not a tidied vers
 |---|---|---|
 | OVH/Kimsufi disk replacement | external support ticket (lucas42) | Waiting on OVH |
 | Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | Open (awaiting lucas42's decision) |
-| Decide the rebuilt avalon's disk layout (RAID or a second disk?) | lucas42/lucos#296 (runbook, item 2) | Open (awaiting lucas42's decision) |
+| Decide the rebuilt avalon's disk layout (RAID or a second disk?) | lucas42/lucos#296 (runbook, item 2) | Decided: **stays single-disk for now**, as the server is mid-way through a year-long contract. Revisit at renewal. This raises the value of lucas42/lucos_docker_health#118. |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
 | Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) |
 | Add a host disk-health signal (I/O error rate, optionally SMART) | lucas42/lucos_docker_health#118 | Open (decision) |
