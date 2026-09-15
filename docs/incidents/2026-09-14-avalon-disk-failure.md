@@ -135,7 +135,7 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 ## Resolution
 
-**TBD.** This section is to be written once OVH has replaced the disk and avalon has been rebuilt and restored. The rebuild and restore procedure lives in lucos-system-administrator's runbook ticket (TBD: link). The data comes from the emergency-backups directory described above. Verification must include a **triggered `create-backups` run**, not just green `/_info`s.
+**TBD.** This section is to be written once OVH has replaced the disk and avalon has been rebuilt and restored. The rebuild and restore procedure lives in lucos-system-administrator's runbook, lucas42/lucos#296. The data comes from the emergency-backups directory described above. Verification must include a **triggered `create-backups` run**, not just green `/_info`s.
 
 ---
 
@@ -144,8 +144,8 @@ These are recorded so the report shows what actually happened, not a tidied vers
 | Action | Issue / PR | Status |
 |---|---|---|
 | OVH/Kimsufi disk replacement | external support ticket (lucas42) | Waiting on OVH |
-| Rebuild avalon and restore from the emergency backups | TBD: lucos-system-administrator's runbook ticket | Open |
-| Decide the rebuilt avalon's disk layout (redundancy?) | TBD: part of the rebuild/runbook | Open |
+| Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | Open (awaiting lucas42's decision) |
+| Decide the rebuilt avalon's disk layout (RAID or a second disk?) | lucas42/lucos#296 (runbook, item 2) | Open (awaiting lucas42's decision) |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
 | Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) |
 | Add a host disk-health signal (I/O error rate, optionally SMART) | lucas42/lucos_docker_health#118 | Open (decision) |
