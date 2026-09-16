@@ -66,6 +66,8 @@ All times UTC.
 | 2026-09-16 | **lucas42 reboots avalon deliberately**, to apply his `resolv.conf` changes. Everything on the host is unreachable for a few minutes. Planned, not a fault — and the first test of whether the rebuilt host brings its services back by itself. |
 | 2026-09-16 | **avalon comes back and every already-deployed container restarts on its own**, reporting healthy: the three `lucos_creds` containers, `lucos_configy`, the three `lucos_docker_mirror` containers, `lucos_root_app` and `lucos_dns_sync`. So `docker.service` is enabled at boot on the new install. `lucos_dns_bind` also came back — in the same broken state, running and "healthy" with no network and no published ports, because port 53 was still held at reboot time. |
 | 2026-09-16 | **Port 53 freed**, with `DNSStubListener=no`. lucas42's first pass at the change didn't take — the config still read `yes` after the reboot — which is why the reboot alone didn't fix it. `lucos_dns` is redeployed. |
+| 00:45 | **The router is back.** `https://l42.eu/_info` answers 200 from outside, serving the restored pre-incident certificates rather than newly issued ones. |
+| 01:04 onwards | **Monitoring is deployed and cannot answer.** Every endpoint returns 500 after ~5s, and the container is `Up (unhealthy)`, which also failed its CI deploy job. Cause below. |
 | TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
@@ -167,6 +169,16 @@ The more interesting result is `lucos_dns_bind`. I'd predicted it wouldn't come 
 
 No new monitoring check is proposed for this. An unreachable service is exactly what monitoring's external `/_info` poll already catches; the only reason nothing flagged it here is that monitoring itself was still down. Adding a container-level "healthy but has no ports" check would duplicate, at some maintenance cost, a signal the estate already gets for free.
 
+### Monitoring came back, detected everything correctly, and could tell nobody
+
+When `lucos_monitoring` was redeployed it returned HTTP 500 on every endpoint for over an hour, while its poll loops ran perfectly well. Its container log gives the cause, and it is worth stating precisely because the intuitive explanation is wrong.
+
+Every request is served by a synchronous `gen_server:call(StatePid, {fetch, all})` with Erlang's default **5-second** timeout, and the exception is that call timing out. But `{fetch, all}` does no network work: it builds the response from cached state. The call was waiting for the state server process to be *free*, and the process was blocked because **alert delivery runs in-band in it** — each alert was posting to loganne, which was still down, so each post waited out the router's 60-second timeout, and each email attempt retried against a refused port. The container sat at **0.01% CPU**: blocked, not busy.
+
+So monitoring was simultaneously working and useless. It detected `lucos dns` and `lucos configy` failing, raised the alerts correctly, could deliver them on neither channel because both live on avalon, and meanwhile its own dashboard returned 500 to anyone asking what was going on. The alert-delivery half is the concrete instance now recorded on lucas42/lucos#295; the blocking half is recorded on lucas42/lucos_monitoring#300, whose ADR already covers the same principle for a different mechanism.
+
+It self-clears once loganne and mail are back, so nothing was restarted. It is also, by construction, a fault that only appears during a serious outage: the worse the estate's health, the less usable its monitoring becomes.
+
 ### Restore: three snags worth knowing next time
 
 All three came out of restoring `lucos_creds`, the first service back. They're reported by lucos-system-administrator; I haven't reproduced them myself, and they're recorded here because the next restore will meet them again.
@@ -232,7 +244,8 @@ Still to come: the rest of the restore, service by service, and then verificatio
 | Confirm Let's Encrypt renewal works on the rebuilt host before 2026-10-18, when the restored certificates expire. Both paths run inside the router container: `update-domains.sh`'s per-domain `certbot certonly`, at startup and daily at 22:16, and the stock Debian `certbot renew` cron. Owner: sysadmin | lucas42/lucos#296 | Open — the first natural attempt falls around 2026-09-18, 30 days before expiry, so it tests itself within days |
 | Build tooling to rotate the lucos_creds master `data_key` | lucas42/lucos_creds#565 | Open |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
-| Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) |
+| Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) — a concrete instance from this rebuild is now recorded on the ticket: alerts correctly raised for `lucos dns` and `lucos configy`, deliverable on neither channel |
+| Stop monitoring's alert delivery blocking its read path, so the dashboard stays usable when the estate is broken | lucas42/lucos_monitoring#300 (ADR) | Open — recorded there as a second mechanism the ADR must cover. Only bites when loganne or mail are themselves down, which is rare, but that is the incident case |
 | Add a host disk-health signal (I/O error rate, optionally SMART) | lucas42/lucos_docker_health#118 | Open (decision) |
 | Record this occurrence against the alert-to-action gap | lucas42/lucos#290 (comment) | Done |
 | DNS zone expiry deadline (2026-10-12 07:09:51 UTC) | recorded on lucas42/lucos#294; no issue, by lucas42's decision | Monitoring |
