@@ -63,6 +63,7 @@ All times UTC.
 | 2026-09-16 | `lucos_backups/init-host.sh` runs successfully, now that creds is up: `/srv/backups` and the `lucos-backups` account exist on avalon (confirmed by team-lead). Next up: `lucos_docker_mirror`, then DNS. |
 | 2026-09-16 | **`lucos_dns_bind` fails to start**: `failed to bind host port 0.0.0.0:53/tcp: address already in use`. systemd-resolved (pid 393) already holds port 53 on the fresh trixie install. Found in dockerd's log, which needed lucas42's root access. The container's empty network attachment and its "healthy but unreachable" appearance were consequences of the failed start, not a Docker networking fault. |
 | 2026-09-16 | **A second finding in the same logs:** dockerd's resolver times out against `127.0.0.53` for `configy.l42.eu` and `schedule-tracker.l42.eu`, so containers on avalon cannot resolve hostnames. Cause not yet established; lucos-system-administrator is preparing a fix for lucas42 to run, since it needs root. |
+| 2026-09-16 | **lucas42 reboots avalon deliberately**, to apply his `resolv.conf` changes. Everything on the host is unreachable for a few minutes. Planned, not a fault — and the first test of whether the rebuilt host brings its services back by itself. |
 | TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
