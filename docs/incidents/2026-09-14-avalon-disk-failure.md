@@ -1,14 +1,14 @@
 # Incident: avalon's single disk failed — estate-wide outage and emergency data rescue
 
-> **DRAFT — resolved, pending review.** avalon has been rebuilt and the estate restored and verified; `lucos_mail_smtp` remains down and is tracked separately on lucas42/lucos_mail#79. Source issue: **lucas42/lucos#294**; rebuild runbook: **lucas42/lucos#296**.
+> **Resolved 2026-09-16.** avalon was rebuilt and the estate restored and verified, and all 55 monitored systems are healthy. One recovery remains outstanding and is tracked: the photo originals (lucas42/lucos_photos#525). Source issue: **lucas42/lucos#294**; rebuild runbook: **lucas42/lucos#296**.
 
 | Field | Value |
 |---|---|
 | **Date** | 2026-09-14 |
-| **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** `lucos_mail_smtp` remains down beyond that, tracked separately. |
+| **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** The last service, `lucos_mail_smtp`, was restored at 07:31 that morning. |
 | **Severity** | Complete outage (every avalon-hosted service) + data risk |
 | **Services affected** | Everything hosted on avalon, which is nearly the whole estate. That includes aithne (login), contacts, eolas, arachne, media (metadata, manager, seinn, weightings), photos, locations, notes, creds, worlds, backups, loganne, schedule-tracker, monitoring, the `l42.eu` router and DNS primary. Services on xwing/salvare kept running, but lost their dependencies on avalon. |
-| **Still open** | **The estate has no outbound email alerting.** `lucos_mail_smtp` is down (lucas42/lucos_mail#79, Critical), so monitoring raises alerts that reach nobody by email. See "Still open after the rebuild" for the rest. |
+| **Still open** | **The photo originals have not been recovered.** They were the one dataset deliberately excluded from backups, and the app-based recovery path doesn't work while the server treats a known hash as "already have it" (lucas42/lucos#525 — see "Photos" below). Everything else is restored and all 55 systems are healthy. |
 | **Detected by** | Monitoring alerts from ~07:55 UTC (delivered by email). First acted on by an SRE ops check at 12:15 UTC. |
 
 ---
@@ -209,6 +209,28 @@ The rescue-time repair of `media.sqlite` left `cum_weighting` — a running cumu
 
 **I predicted it would self-heal and it did not.** I recorded that the weightings recalculation would repair it; that job then ran successfully and changed nothing, because `cum_weighting` is only ever maintained *incrementally* — adjusted by deltas on each weighting change or deletion — and **nothing in the estate rebuilds it from `SUM(weighting)`**. An inconsistency introduced from outside the app is therefore permanent. It was corrected on 2026-09-16 by a one-off recomputation with lucas42's approval, and the structural gap is lucas42/lucos_media_metadata_api#340.
 
+### The mail outage was not what it looked like
+
+For most of the rebuild `lucos_mail_smtp` crash-looped with `Fatal: master_service settings: Invalid settings: Unsupported dovecot_storage_version 2.4`, and the same error broke its CI. The striking part was that it appeared to be running an **unchanged, already-published pre-incident image** — which would have meant a container that had worked for weeks suddenly refusing to start with no input having changed.
+
+**That reading was wrong, and the truth is more useful.** The container was not running the intended image at all. `lucos_deploy_orb` resolves the version to deploy from the **newest git tag rather than the checked-out commit** (lucas42/lucos_deploy_orb#193, raised Critical), so a *different* image — one built during the rebuild — was deployed in its place. That image carried an **unpinned dovecot**, and the newer package validates the setting more strictly: `2.4` is rejected where `2.4.0` is accepted.
+
+Three separate faults stacked behind one symptom: a deploy selecting the wrong artefact, a dependency unpinned so its behaviour could change underneath a rebuild, and a configuration value that had always been marginal. The fix was a one-character change (lucas42/lucos_mail#80, merged 07:31, closing lucas42/lucos_mail#79), with pinning tracked as lucas42/lucos_mail#81 and the selection bug as lucas42/lucos_deploy_orb#193.
+
+**Worth keeping:** "the image didn't change" is a claim about *which artefact is running*, not about the tag attached to it — and a rebuild, when everything is being re-tagged and re-deployed, is exactly when that assumption is least safe. It is settled by inspecting the running container, not the pipeline's intent.
+
+### Photos: the one dataset still missing, and why its recovery path didn't work
+
+`lucos_photos_photos` — the photo originals — was the single volume deliberately excluded from backups, on the basis that it could be re-synced from the phone. The rebuild tested that assumption and **it failed**.
+
+The database was restored, so it holds 2,141 photo and 111 video rows, each carrying a `sha256_hash`. The files are gone. When the app re-offers a photo, `upload_photo()` looks that hash up **in the database only** and returns `200 "already have it"` before writing anything, discarding the uploaded file. Neither side notices.
+
+Observed rather than inferred: in one fifteen-minute window the API answered **619 `POST /photos` requests, every one a 200**, while the volume stayed at **4 files, 6MB** and the row count never moved. Left alone, the resync would have run to completion, reported ~2,252 items "already uploaded", and restored nothing.
+
+lucas42 stopped it once this was established. The server-side fix — repair the missing file on re-upload rather than discarding it — is in review as lucas42/lucos_photos#526 against lucas42/lucos_photos#525, and recovering the originals needs that to ship followed by another full resync. **Until then they exist only on the phone.**
+
+The lesson is about the exclusion more than the bug: a dataset left out of backups because "it can be re-synced" is only as safe as its re-sync path, and nobody had exercised that path against the case where the database survives and the files do not.
+
 ### Restore: three snags worth knowing next time
 
 All three came out of restoring `lucos_creds`, the first service back. They're reported by lucos-system-administrator; I haven't reproduced them myself, and they're recorded here because the next restore will meet them again.
@@ -240,7 +262,7 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 ## Resolution
 
-**Resolved 2026-09-16, with one service still out.** The rebuild and restore followed lucos-system-administrator's runbook, lucas42/lucos#296, using the data from the emergency-backups directory described above. 33 of avalon's 34 services are back and externally verified. The exception is **`lucos_mail_smtp`**, which crash-loops on an unchanged pre-incident image and is tracked separately as lucas42/lucos_mail#79 (Critical). Because of it the estate still has no outbound email alerting.
+**Resolved 2026-09-16.** The rebuild and restore followed lucos-system-administrator's runbook, lucas42/lucos#296, using the data from the emergency-backups directory described above. 33 of avalon's 34 services are back and externally verified. The last of them, **`lucos_mail_smtp`**, was restored at **07:31 on 2026-09-16** (lucas42/lucos_mail#80, closing lucas42/lucos_mail#79) — see "The mail outage was not what it looked like" below. **All 55 monitored systems are now healthy**, and every CI check raised by the rebuild is cleared.
 
 How it was rebuilt:
 
@@ -260,7 +282,7 @@ How it was rebuilt:
 - **Restored data matches the figures recorded in the rescue README**, checked against the database engines rather than by inspection: contacts **30 tables**, eolas **41 tables**, photos **7 tables with the `vector` extension present**, media_metadata **14,755 tracks and 121,274 tags** with `integrity_check ok` and exactly the nine expected tables, and lucos_worlds' activity log latest at **2026-09-14 00:16:29** — lucas42's final edit, the one no backup contained. The aithne and creds stores could not be queried directly, as both run from images with no shell; they are covered indirectly by their services' own `db` checks, which are green.
 - **aurora holds today's copies.** Reached the documented way, through the backups container's own Fabric path via the xwing gateway: **23 archives dated 2026-09-16** in `/share/backups/host/avalon/volume/`, host directories for avalon and xwing, and 1007 GB free at 73% used. After being unreachable and unchecked throughout the incident, the third copy is confirmed present.
 
-**Still open after the rebuild:** **the media queue came back empty** — `lucos_media_manager`'s state was restored from the 2026-09-13 backup, which recorded it as playing with nothing queued, so there is nothing to play until something repopulates it. If anyone reports that their music has stopped in the next few days, that is why, and it is also what keeps lucas42/lucos_media_linuxplayer#146 crash-looping. Also: `lucos_mail_smtp` (lucas42/lucos_mail#79); the media `weighting` inconsistency, **now corrected** — see below;  `lucos_firewall` and `lucos_monitoring` CI checks, both deliberately left red rather than re-run overnight; and `lucos_media_manager`, whose deploy genuinely failed while the service runs, which is worth understanding rather than papering over. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
+**Still open after the rebuild:** **the media queue came back empty** — `lucos_media_manager`'s state was restored from the 2026-09-13 backup, which recorded it as playing with nothing queued, so there is nothing to play until something repopulates it. If anyone reports that their music has stopped in the next few days, that is why, and it is also what keeps lucas42/lucos_media_linuxplayer#146 crash-looping. **The photo originals are still missing** and are the one genuinely outstanding recovery — see "Photos" below. Everything else that was open the morning after has since closed: `lucos_mail_smtp` was fixed at 07:31, the media `weighting` inconsistency was corrected, the deliberately-held CI re-runs all went green, and `lucos_media_manager`'s deploy failure turned out to be a start-up race rather than a bad deploy — the container it created is the one running, on the image that workflow built, and `docker compose up --wait` simply gave up 18.2s in while the healthcheck was still settling. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
@@ -283,7 +305,11 @@ How it was rebuilt:
 | Restore avalon's swapfile to its previous size (~512 MB now, against roughly 4.5 GB before) — flagged by the sysadmin; `lucos_photos_worker` and `redis` were the known memory consumers. The runbook's swapfile step gave no size, which is the likely reason for the gap, and now specifies one, so a future rebuild shouldn't reproduce it | lucas42/lucos#303 | Open |
 | Fix the DNS secondary on xwing, which cannot write zone files to disk and served all five zones from memory throughout the outage — filed 2026-09-16. Failing continuously since at least 26 August; root cause not established, and the four obvious explanations are ruled out in the issue | lucas42/lucos_dns#135 | Open |
 | Stop `lucos_media_linuxplayer` crash-looping when the manager reports playing with an empty queue — ready/High, owner developer. Raised High for masking salvare's container-health check, not for the player itself | lucas42/lucos_media_linuxplayer#146 | Open |
-| Restore production SMTP: `lucos_mail_smtp` crash-loops on an unchanged pre-incident image, so the estate has no email alerting even with loganne back — Critical, parked for lucas42. The second delivery channel of this incident to be unavailable during it | lucas42/lucos_mail#79 | Blocked |
+| Restore production SMTP — **done 2026-09-16 07:31** (lucas42/lucos_mail#80, closing lucas42/lucos_mail#79). It was not an unchanged image: the orb deployed a different one built during the rebuild, carrying an unpinned dovecot whose validator rejects `2.4` for `2.4.0` | lucas42/lucos_mail#79 | Done |
+| Pin the dovecot package version so a rebuild can't pick up a stricter validator | lucas42/lucos_mail#81 | Open |
+| Fix deploy version resolution, which picks the newest git tag rather than the checked-out commit — it deployed the wrong artefact and caused the mail outage | lucas42/lucos_deploy_orb#193 | Open — Critical |
+| Recover the photo originals: the server returns 200 for a hash whose file is missing, so the app-based recovery path restores nothing | lucas42/lucos_photos#525 | Open — fix in review as lucas42/lucos_photos#526; needs that merged plus another full resync |
+| Restore the 2025-01-06 yearly-retention set to avalon | lucas42/lucos#296 | Done — all nine files present in `/srv/backups/local/volume/` |
 | Correct the media `weighting` inconsistency left by the repaired database — **done 2026-09-16**, approved by lucas42: `cum_weighting` recomputed as the running sum in existing order, drift **1,738.60 → 0**, rows breaking the invariant **5 → 0**, row count unchanged; pre-change copy on xwing. **My earlier reading that `all-tracks` would repair it was wrong** — that job ran successfully and changed nothing, because `cum_weighting` is only ever maintained incrementally | lucas42/lucos#302 | Done |
 | Give the estate a way to rebuild `cum_weighting`, since nothing can — so any restore or interrupted write leaves it permanently skewed, detectable only by one check | lucas42/lucos_media_metadata_api#340 | Open |
 | Confirm Let's Encrypt renewal works on the rebuilt host before 2026-10-18, when the restored certificates expire. Both paths run inside the router container: `update-domains.sh`'s per-domain `certbot certonly`, at startup and daily at 22:16, and the stock Debian `certbot renew` cron. Owner: sysadmin — the first natural attempt falls around 2026-09-18, 30 days before expiry, so it tests itself within days | lucas42/lucos#302 | Open |
