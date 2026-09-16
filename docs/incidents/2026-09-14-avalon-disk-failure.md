@@ -61,9 +61,9 @@ All times UTC.
 | 23:21 | **`lucos_root` deploys to the rebuilt avalon and answers on `/_info`.** The deploy pipeline works — though not unaided: per lucos-system-administrator's own account on lucas42/lucos#296, the deploy needed a temporary `LUCOS_DEPLOY_ENV_BASE64` project variable holding a placeholder non-secret envfile, removed immediately afterwards, precisely because creds was down. The bypass is the dependency described under "Rebuild". The only failing step is the loganne deploy log, since loganne is also on avalon and not yet up. |
 | 23:21–23:28 | The test surfaces a blocker: CI fetches every project's credentials from `creds.l42.eu`, on avalon, for both builds and deploys. lucas42/lucos#296's Step 3 order (`lucos_configy` → `lucos_dns` → `lucos_creds`) therefore cannot run as written. A revised sequence is proposed. |
 | 2026-09-16 | lucas42 approves the revised sequence: `lucos_creds` first, via its CI bypass, with its store restored immediately after, then `lucos_configy`, DNS, the router, the firewall and the rest. The sysadmin works down it. (Time not recorded; relayed by team-lead.) |
-| 23:33–23:47 | **`lucos_creds` is deployed**, by selective rerun of its last good pre-incident pipeline (#1324, 2026-09-11), and its store restored from the rescue tarball. Three attempts: the first deploys, the second fails at `Deploy using docker compose` mid-restore, the third succeeds at 23:44:06–23:47:25. In the first and third, every real step passed and only "Send deploy log to loganne" failed, loganne being on avalon and not yet up. (Times and step outcomes read from the CircleCI API.) |
+| 23:33–23:47 | **`lucos_creds` is deployed**, by selective rerun of its last good pre-incident pipeline (CircleCI pipeline 1324, 2026-09-11), and its store restored from the rescue tarball. Three attempts: the first deploys, the second fails at `Deploy using docker compose` mid-restore, the third succeeds at 23:44:06–23:47:25. In the first and third, every real step passed and only "Send deploy log to loganne" failed, loganne being on avalon and not yet up. (Times and step outcomes read from the CircleCI API.) |
 | 23:49:17–23:49:34 | **A fresh `lucos_configy` build fails**, at `lucos/build`. This is the second orb defect described under "Rebuild", not the credentials one. |
-| 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (#682). Again, only the loganne step fails. |
+| 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (CircleCI pipeline 682). Again, only the loganne step fails. |
 | 2026-09-16 | `lucos_backups/init-host.sh` runs successfully, now that creds is up: `/srv/backups` and the `lucos-backups` account exist on avalon (confirmed by team-lead). Next up: `lucos_docker_mirror`, then DNS. |
 | 2026-09-16 | **`lucos_dns_bind` fails to start**: `failed to bind host port 0.0.0.0:53/tcp: address already in use`. systemd-resolved (pid 393) already holds port 53 on the fresh trixie install. Found in dockerd's log, which needed lucas42's root access. The container's empty network attachment and its "healthy but unreachable" appearance were consequences of the failed start, not a Docker networking fault. |
 | 2026-09-16 | **A second finding in the same logs:** dockerd's resolver times out against `127.0.0.53` for `configy.l42.eu` and `schedule-tracker.l42.eu`, so containers on avalon cannot resolve hostnames. Cause not yet established; lucos-system-administrator is preparing a fix for lucas42 to run, since it needs root. |
@@ -291,17 +291,34 @@ All three came out of restoring `lucos_creds`, the first service back. They're r
 - **The rescue tarballs aren't shaped like the nightly ones.** They preserve the full original path inside the archive, so a restore has to move files up a level rather than unpacking in place.
 - **`lucos_creds_ui` cached the wrong SSH host key.** It connected to the freshly-deployed backend before the restore, cached that identity, and then rejected the restored one. Removing its container cleared it. Anything that caches a peer's identity across a restore can do this.
 
-### An 87-byte archive that looks like a failed backup and isn't
+### An 87-byte photos archive from March, and three wrong answers about it
 
-While checking the restored backup set, an **87-byte** `lucos_media_import_state.tar.gz` on xwing was read as evidence of a failed or empty backup, and briefly chased as one.
+While checking the restored backup set, an **87-byte `lucos_photos_photos.2026-03-06.tar.gz`** turned up on xwing, under `host/avalon/volume/`. An empty archive of the photo library, on a host configy says to skip, is an alarming-looking object, and it took three attempts to explain correctly. The answer is mundane; the three attempts are the interesting part.
 
-It is neither. The archive is correct and the volume is genuinely empty. `lucos_media_import_state` is described in configy as *"Checkpoint file for the resumable weekly import scan"*, and the checkpoint is **per-run and deleted when a scan completes successfully**. So an empty archive is the *success* signal: it means the last scan finished and tidied up after itself. A checkpoint file present in the backup would be the thing worth investigating.
+**What it actually is**, from configy's history and the database:
 
-Listing the archive settles it in one command — it contains exactly one entry, `./` — and the same volume has produced 84–87 byte archives on every run going back to May, which is what a correct, boring result looks like.
+| Date | Event |
+|---|---|
+| 2026-02-24 | `lucos_photos_photos` is added to configy (`5b7c41f`). The archive's internal directory mtime is 2026-02-24 17:13 — the volume's creation. |
+| **2026-03-06** | A full backup run tars it to xwing. **The volume is empty**, so the archive is 87 bytes and contains exactly one entry, `./`. |
+| **2026-03-09 14:06:49Z** | The first photo is uploaded — *three days after* the backup. |
+| 2026-03-12 | Photos excluded from salvare (`c26d9c1`). |
+| 2026-04-28 | Photos excluded from xwing, "now aurora is verified" (`f47bea4`). |
+| 2026-06-10 | Photos opted into `backup_strategy: incremental` (`5212311`). |
 
-**Worth keeping, because it generalises past this one file:** a working-state file is not a history. Checkpoints, cursors, lockfiles and progress files are usually created on failure and removed on success, so their *absence* means things went well and their *presence* is the anomaly. Reading them the other way round inverts the alarm. For "did this job actually run?", the purpose-built sources are schedule-tracker and loganne, not the size of an artefact that was never meant to persist.
+So it is a **correct backup of a genuinely empty volume**, taken in the three-day window between the volume existing and the first photo arriving, and left behind on a host that stopped receiving photos backups seven weeks later. It is the only volume on xwing with a single fossil archive — every other volume there has 15 to 17 — so this is specific to photos rather than a general pattern.
 
-(The first explanation offered for it — that the volume is skipped on that host — is not the case; `lucos_media_import` runs only on xwing, and the volume carries no `skip_backup` of any kind. It is backed up there, correctly, and is simply empty. Recorded because the wrong explanation is the more reassuring one, and would have closed the question just as effectively.)
+**One thread is honestly not closed.** The xwing skip did not land until 2026-04-28, `2026-04-06` *is* a retained backup date on that host, and xwing has 88 GB free, so neither the config, retention nor capacity explains why no April archive of the growing library exists. salvare has never held one at all. Not worth chasing further — the data is on aurora and verified — but recorded as unexplained rather than smoothed over.
+
+**The three wrong answers, which are the reason this section exists:**
+
+1. *"A failed or truncated backup."* The intuitive reading of any near-empty archive, and wrong: `tar tzvf` shows a well-formed archive of an empty directory.
+2. *"The volume is correctly skipped on that host."* Reassuring, plausible, and wrong — the skip postdates the file by seven weeks, and a skipped volume produces no archive at all rather than an empty one.
+3. *"It's `lucos_media_import_state`, a self-deleting checkpoint whose empty archive is the success signal."* This one was mine, and it is the most instructive failure of the three. Searching for *"the 87-byte archive"* found a **different** file that happens to be 84–87 bytes too, and I explained the file I had found rather than the file I had been asked about. My first search for photos archives had used a glob that missed the two-level `host/avalon/volume/` path and returned nothing — and **I read that empty output as "no such file exists"** rather than as "my search didn't reach it", which is a rule I already had written down.
+
+That third failure is the same shape as this incident's central lesson, in miniature: a confident negative that nobody checked. It is also a reminder that a coincidence of the specific search term — two unrelated files both 87 bytes — will happily produce a complete, internally consistent, entirely irrelevant explanation.
+
+**Worth keeping regardless:** the reasoning in answer 3 is sound about the file it describes. A working-state file is not a history — checkpoints, cursors and lockfiles are typically created on failure and deleted on success, so their absence means things went well. For "did this job actually run?", the purpose-built sources are schedule-tracker and loganne, not the size of an artefact never meant to persist.
 
 ### Response: corrections made along the way
 
