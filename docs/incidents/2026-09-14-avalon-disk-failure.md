@@ -222,7 +222,15 @@ Landed so far:
 - `lucos_creds` is deployed and its store restored from the rescue tarball, and `lucos_configy` is deployed and verified externally. Both went via a selective rerun of a pre-incident pipeline, because fresh builds are blocked.
 - `lucos_backups/init-host.sh` has run, so `/srv/backups` and the `lucos-backups` account exist. `lucos_docker_mirror` and DNS come next.
 
-Still to come: the rest of the restore, service by service, and then verification. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
+**Verification (step 5 of the runbook), carried out 2026-09-16 02:00–03:00:**
+
+- **Every HTTP-serving system answers `/_info` externally.** All 41 configy-declared systems were swept from outside the estate: the 31 that serve HTTP all returned 200, 28 of them fully clean. The other 10 have no HTTP surface — eight have no domain, and `lucos_dns` and `lucos_dns_secondary` have no `http_port`, so the TLS errors against their domains are just the router's default certificate on a name with no web vhost.
+- **All five DNS zones match between primary and secondary**: `l42.eu` 1783445400, `s.l42.eu` 1780876665, `lukeblaney.co.uk` 20, `rowanblaney.co.uk` 17, `tfluke.uk` 25. That matters more than usual, because lucas42/lucos_dns#135 means the secondary holds no zone files on disk and the live sync is all there is.
+- **The deploy pipelines that had failed only on their loganne step were re-run** — configy, docker_mirror, creds, dns and router — and all five reached terminal success. `lucos_firewall` was deliberately not re-run: it reapplies rules on all three hosts, and with lucas42 away the downside of a mistake is locking every agent out of every host, against an upside of a green tick.
+- **A `create-backups` run was triggered end to end** — TBD pending result.
+- **Restored data spot-checked against the README's recorded counts** — TBD pending the backup run finishing, since the backup pauses database containers and querying through that would give false readings.
+
+Still to come: the remaining verification items above. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
