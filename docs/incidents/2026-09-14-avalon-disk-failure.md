@@ -18,7 +18,7 @@ avalon runs every one of its services from a **single spinning hard disk with no
 
 Once engaged, the team avoided anything that would write to the disk. lucas42 booted the server into OVH rescue mode that evening, and the data was copied from a read-only mount to xwing, then to salvare. **Every critical database was recovered and verified as a working database**, including lucas42's lucos_worlds edits up to 00:16 UTC on the 14th, which no backup contained. One database file, media_metadata, had unreadable sectors: it was repaired, with only 2 rows restored from the previous day's backup.
 
-Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all**, because CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon. That dictates the order of the restore, and it is covered under "Rebuild" below. The restore is in progress. **(TBD: resolution.)**
+Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all.** CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon, and a second, unrelated orb defect hard-fails every build against the container mirror, which is also on avalon. That dictates the order of the restore, and both are covered under "Rebuild" below. The restore is in progress. **(TBD: resolution.)**
 
 ---
 
@@ -57,6 +57,10 @@ All times UTC.
 | 23:21 | **`lucos_root` deploys to the rebuilt avalon and answers on `/_info`.** The deploy pipeline works. The only failing step is the loganne deploy log, since loganne is also on avalon and not yet up. |
 | 23:21–23:28 | The test surfaces a blocker: CI fetches every project's credentials from `creds.l42.eu`, on avalon, for both builds and deploys. lucas42/lucos#296's Step 3 order (`lucos_configy` → `lucos_dns` → `lucos_creds`) therefore cannot run as written. A revised sequence is proposed. |
 | 2026-09-16 | lucas42 approves the revised sequence: `lucos_creds` first, via its CI bypass, with its store restored immediately after, then `lucos_configy`, DNS, the router, the firewall and the rest. The sysadmin works down it. (Time not recorded; relayed by team-lead.) |
+| 23:33–23:47 | **`lucos_creds` is deployed**, by selective rerun of its last good pre-incident pipeline (#1324, 2026-09-11), and its store restored from the rescue tarball. Three attempts: the first deploys, the second fails at `Deploy using docker compose` mid-restore, the third succeeds at 23:44:06–23:47:25. In the first and third, every real step passed and only "Send deploy log to loganne" failed, loganne being on avalon and not yet up. (Times and step outcomes read from the CircleCI API.) |
+| 23:49:17–23:49:34 | **A fresh `lucos_configy` build fails**, at `lucos/build`. This is the second orb defect described under "Rebuild", not the credentials one. |
+| 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (#682). Again, only the loganne step fails. |
+| 2026-09-16 | `lucos_backups/init-host.sh` runs successfully, now that creds is up: `/srv/backups` and the `lucos-backups` account exist on avalon (confirmed by team-lead). Next up: `lucos_docker_mirror`, then DNS. |
 | TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
@@ -131,7 +135,19 @@ Two practical consequences:
 - **The restore order is forced.** lucas42/lucos#296's original Step 3 sequence began with `lucos_configy` and `lucos_dns`, neither of which could deploy before `lucos_creds`. The approved sequence now starts with `lucos_creds`, restoring its store immediately after it boots so the window in which it serves fresh, wrong credentials stays short.
 - **A workaround exists, and it is worth knowing.** CircleCI's selective job rerun redeploys a service from an already-published image, skipping the build step and its credential fetch entirely. That is how `lucos_root` was deployed for the test, reusing its last pre-incident pipeline.
 
-This is the same concentration risk as the disk, in a different layer: the estate's credential store, its CI dependency, its DNS primary, its monitoring and its alerting all live on one machine. The disk failure made all five fail together.
+**A second, independent orb defect blocks fresh builds for the same reason.** `src/commands/publish-docker.yml` probes the registry mirror with `MIRROR_HTTP_CODE=$(curl … -w '%{http_code}' … || echo "000")` and then tests `[ "$MIRROR_HTTP_CODE" != "000" ]`. When the connection is refused outright, curl prints its own `000` *and* exits non-zero, so the `|| echo "000"` fires too and the value becomes `000000`, which passes the `!= "000"` test. The probe therefore declares an unreachable mirror reachable, `Docker Login (mirror)` runs against it, and the build hard-fails instead of falling back to Docker Hub. `lucos_docker_mirror` is on avalon, so while avalon is down this fails every fresh build in the estate — `lucos_configy`'s at 23:49 on 2026-09-15 is a concrete instance. I've confirmed the probe code on `lucos_deploy_orb` `main`; the `000000` mechanism and its reproduction were worked out by lucos-system-administrator and are recorded on lucas42/lucos_deploy_orb#188, which already asks for the login step to fail open.
+
+So a fresh build is blocked twice over while avalon is down: once by the publish credentials, once by the mirror probe. Both were worked around the same way, by rerunning a pre-incident pipeline and skipping the build.
+
+This is the same concentration risk as the disk, in a different layer: the estate's credential store, its container mirror, its CI dependency, its DNS primary, its monitoring and its alerting all live on one machine. The disk failure made all of them fail together.
+
+### Restore: three snags worth knowing next time
+
+All three came out of restoring `lucos_creds`, the first service back. They're reported by lucos-system-administrator; I haven't reproduced them myself, and they're recorded here because the next restore will meet them again.
+
+- **`restore-volume.sh`'s `docker compose up --no-start` isn't safe on a multi-service compose file.** It's designed to recreate one volume's container, and a compose file with several services does more than that.
+- **The rescue tarballs aren't shaped like the nightly ones.** They preserve the full original path inside the archive, so a restore has to move files up a level rather than unpacking in place.
+- **`lucos_creds_ui` cached the wrong SSH host key.** It connected to the freshly-deployed backend before the restore, cached that identity, and then rejected the restored one. Removing its container cleared it. Anything that caches a peer's identity across a restore can do this.
 
 ### Response: corrections made along the way
 
@@ -164,8 +180,10 @@ Landed so far:
 - The host serves fresh SSH host keys rather than the rescued ones, which is the fallback the runbook allows.
 - The deploy pipeline is confirmed working end to end, by deploying `lucos_root` and fetching its `/_info`.
 - lucas42 has approved a restore sequence that starts with `lucos_creds`, for the reason set out under "Rebuild" above.
+- `lucos_creds` is deployed and its store restored from the rescue tarball, and `lucos_configy` is deployed and verified externally. Both went via a selective rerun of a pre-incident pipeline, because fresh builds are blocked.
+- `lucos_backups/init-host.sh` has run, so `/srv/backups` and the `lucos-backups` account exist. `lucos_docker_mirror` and DNS come next.
 
-Still to come: the restore itself, service by service, and then verification. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
+Still to come: the rest of the restore, service by service, and then verification. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
@@ -181,6 +199,7 @@ Still to come: the restore itself, service by service, and then verification. Ve
 | Clear avalon's old host key wherever a `known_hosts` still holds it | lucas42/lucos#296 | Open — the sysadmin found no `lucos-agent` entries on xwing or salvare; `~lucos-backups/.ssh/known_hosts` needs root to check |
 | Rotate credentials possibly exposed on the departing disk: the lucos_creds `server_key` and the aithne credential store. avalon's OS-level host keys are moot, as the rebuild generated fresh ones | lucas42/lucos#298 | Open (Blocked on lucas42/lucos#296) |
 | Decide what to do about CI being unable to build or deploy anything while `creds.l42.eu` is down | lucas42/lucos#299 | Open (decision) |
+| Make the mirror login fail open, and stop the mirror probe reading a refused connection as reachable | lucas42/lucos_deploy_orb#188 | Open — the `000000` defect found during this rebuild is recorded there |
 | Reconcile lucas42's own host-setup notes with lucas42/lucos#296's Step 1 into one runbook, marking which steps are his and which the agents' | lucas42/lucos#296 | Open (suggested, after the rebuild) |
 | Restore avalon's swapfile to its previous size (~512 MB now, against roughly 4.5 GB before) | lucas42/lucos#296 | Open — flagged by the sysadmin; `lucos_photos_worker` and `redis` were the known memory consumers |
 | Build tooling to rotate the lucos_creds master `data_key` | lucas42/lucos_creds#565 | Open |
