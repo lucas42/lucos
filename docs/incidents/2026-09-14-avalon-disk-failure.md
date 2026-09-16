@@ -175,7 +175,7 @@ When `lucos_monitoring` was redeployed it returned HTTP 500 on every endpoint fo
 
 Every request is served by a synchronous `gen_server:call(StatePid, {fetch, all})` with Erlang's default **5-second** timeout, and the exception is that call timing out. But `{fetch, all}` does no network work: it builds the response from cached state. The call was waiting for the state server process to be *free*, and the process was blocked because **alert delivery runs in-band in it** — each alert was posting to loganne, which was still down, so each post waited out the router's 60-second timeout, and each email attempt retried against a refused port. The container sat at **0.01% CPU**: blocked, not busy.
 
-So monitoring was simultaneously working and useless. It detected `lucos dns` and `lucos configy` failing, raised the alerts correctly, could deliver them on neither channel because both live on avalon, and meanwhile its own dashboard returned 500 to anyone asking what was going on. The alert-delivery half is the concrete instance now recorded on lucas42/lucos#295; the blocking half is recorded on lucas42/lucos_monitoring#300, whose ADR already covers the same principle for a different mechanism.
+So monitoring was simultaneously working and useless. It detected `lucos dns` and `lucos configy` failing, raised the alerts correctly, could deliver them on neither channel because both live on avalon, and meanwhile its own dashboard returned 500 to anyone asking what was going on. The alert-delivery half is the concrete instance now recorded on lucas42/lucos#295; the blocking half is lucas42/lucos_monitoring#312, with the principle that governs it on lucas42/lucos_monitoring#300, whose ADR already covers the same ground for a different mechanism.
 
 It self-clears once loganne and mail are back, so nothing was restarted. It is also, by construction, a fault that only appears during a serious outage: the worse the estate's health, the less usable its monitoring becomes.
 
@@ -245,7 +245,7 @@ Still to come: the rest of the restore, service by service, and then verificatio
 | Build tooling to rotate the lucos_creds master `data_key` | lucas42/lucos_creds#565 | Open |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
 | Decide whether alerting should survive avalon going down hard | lucas42/lucos#295 | Open (decision) — a concrete instance from this rebuild is now recorded on the ticket: alerts correctly raised for `lucos dns` and `lucos configy`, deliverable on neither channel |
-| Stop monitoring's alert delivery blocking its read path, so the dashboard stays usable when the estate is broken | lucas42/lucos_monitoring#300 (ADR) | Open — recorded there as a second mechanism the ADR must cover. Only bites when loganne or mail are themselves down, which is rare, but that is the incident case |
+| Stop monitoring's alert delivery blocking its read path, so the dashboard stays usable when the estate is broken | lucas42/lucos_monitoring#312, with the governing principle on lucas42/lucos_monitoring#300 (ADR) | Open — filed 2026-09-16 at lucas42's request. Only bites when loganne or mail are themselves down, which is rare, but that is the incident case |
 | Add a host disk-health signal (I/O error rate, optionally SMART) | lucas42/lucos_docker_health#118 | Open (decision) |
 | Record this occurrence against the alert-to-action gap | lucas42/lucos#290 (comment) | Done |
 | DNS zone expiry deadline (2026-10-12 07:09:51 UTC) | recorded on lucas42/lucos#294; no issue, by lucas42's decision | Monitoring |
