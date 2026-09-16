@@ -1,11 +1,11 @@
 # Incident: avalon's single disk failed — estate-wide outage and emergency data rescue
 
-> **DRAFT — the incident is not yet resolved.** The disk has been replaced and avalon's rebuild is under way, tracked on lucas42/lucos#296. Sections marked **TBD** are to be completed once the restore is finished and verified end to end. Source issue: **lucas42/lucos#294**.
+> **DRAFT — resolved, pending review.** avalon has been rebuilt and the estate restored and verified; `lucos_mail_smtp` remains down and is tracked separately on lucas42/lucos_mail#79. Source issue: **lucas42/lucos#294**; rebuild runbook: **lucas42/lucos#296**.
 
 | Field | Value |
 |---|---|
 | **Date** | 2026-09-14 |
-| **Duration** | Onset ~07:55 UTC on 2026-09-14. **Ongoing:** avalon has been out of service since ~19:21 UTC that day. The disk was replaced and the host reinstalled on 2026-09-15, and the rebuild is in progress. End time TBD. |
+| **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** `lucos_mail_smtp` remains down beyond that, tracked separately. |
 | **Severity** | Complete outage (every avalon-hosted service) + data risk |
 | **Services affected** | Everything hosted on avalon, which is nearly the whole estate. That includes aithne (login), contacts, eolas, arachne, media (metadata, manager, seinn, weightings), photos, locations, notes, creds, worlds, backups, loganne, schedule-tracker, monitoring, the `l42.eu` router and DNS primary. Services on xwing/salvare kept running, but lost their dependencies on avalon. |
 | **Detected by** | Monitoring alerts from ~07:55 UTC (delivered by email). First acted on by an SRE ops check at 12:15 UTC. |
@@ -18,7 +18,7 @@ avalon runs every one of its services from a **single spinning hard disk with no
 
 Once engaged, the team avoided anything that would write to the disk. lucas42 booted the server into OVH rescue mode that evening, and the data was copied from a read-only mount to xwing, then to salvare. **Every critical database was recovered and verified as a working database**, including lucas42's lucos_worlds edits up to 00:16 UTC on the 14th, which no backup contained. One database file, media_metadata, had unreadable sectors: it was repaired, with only 2 rows restored from the previous day's backup.
 
-Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all.** CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon, and a second, unrelated orb defect hard-fails every build against the container mirror, which is also on avalon. That dictates the order of the restore, and both are covered under "Rebuild" below. The restore is in progress. **(TBD: resolution.)**
+Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all.** CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon, and a second, unrelated orb defect hard-fails every build against the container mirror, which is also on avalon. That dictates the order of the restore, and both are covered under "Rebuild" below. The estate was restored through the early hours of 2026-09-16 and verified end to end by 03:39 that morning, including a triggered backup run that copied 124 archives to all three destinations. One service, the outbound mail relay, remains down.
 
 ---
 
@@ -69,8 +69,12 @@ All times UTC.
 | 00:45 | **The router is back.** `https://l42.eu/_info` answers 200 from outside, serving the restored pre-incident certificates rather than newly issued ones. |
 | 01:04 onwards | **Monitoring is deployed and cannot answer.** Every endpoint returns 500 after ~5s, and the container is `Up (unhealthy)`, which also failed its CI deploy job. Cause below. |
 | 01:14 | **`lucos_loganne` is back, and monitoring recovers on its own** — API 200, no restart. SMTP is still down, which shows the dominant blocker was loganne's 60s timeouts rather than the refused mail port: a channel that hangs starves reads, one that refuses does not. |
-| TBD | Data restored from the emergency backups for the remaining volumes. |
-| TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
+| 01:20–02:09 | **The remaining services are deployed and their volumes restored** — creds, configy, mirror, DNS, router, firewall, then contacts, eolas, photos, worlds, notes, locations, media, arachne, repos and the rest. 33 of avalon's 34 services come back. |
+| 02:12–02:15 | The five deploy pipelines that had failed only on their loganne step are re-run and all reach success. `lucos_firewall` is deliberately left, since reapplying rules on all three hosts to win a green tick is the wrong trade with nobody awake to undo it. |
+| 02:18:35 | **A `create-backups` run is triggered** as the authoritative verification. It **fails** at ~02:34: `errors=1`, no loganne event, and every `lucos_backups` check still green. The cause is lost with the traceback. |
+| 03:24:54 | **A second `create-backups` run is triggered**, output captured to a file. |
+| **03:39:58** | **It completes cleanly — "124 archives successfully backed up"**, the same count as every pre-incident run, copied to xwing, salvare and aurora. **Verification complete; the incident is resolved**, apart from `lucos_mail_smtp`. |
+| 04:20 | aurora confirmed holding 23 archives dated 2026-09-16, reached through the backups container's own path. |
 
 ---
 
@@ -211,9 +215,9 @@ These are recorded so the report shows what actually happened, not a tidied vers
 
 ## Resolution
 
-**TBD — in progress.** The rebuild and restore procedure lives in lucos-system-administrator's runbook, lucas42/lucos#296, and the data comes from the emergency-backups directory described above.
+**Resolved 2026-09-16, with one service still out.** The rebuild and restore followed lucos-system-administrator's runbook, lucas42/lucos#296, using the data from the emergency-backups directory described above. 33 of avalon's 34 services are back and externally verified. The exception is **`lucos_mail_smtp`**, which crash-loops on an unchanged pre-incident image and is tracked separately as lucas42/lucos_mail#79 (Critical). Because of it the estate still has no outbound email alerting.
 
-Landed so far:
+How it was rebuilt:
 
 - Kimsufi replaced the failed disk, and lucas42 reinstalled avalon on Debian trixie 13.7 at the same IPv4 address, working from his own host-setup notes rather than the runbook's Step 1.
 - The host serves fresh SSH host keys rather than the rescued ones, which is the fallback the runbook allows.
@@ -227,10 +231,11 @@ Landed so far:
 - **Every HTTP-serving system answers `/_info` externally.** All 41 configy-declared systems were swept from outside the estate: the 31 that serve HTTP all returned 200, 28 of them fully clean. The other 10 have no HTTP surface — eight have no domain, and `lucos_dns` and `lucos_dns_secondary` have no `http_port`, so the TLS errors against their domains are just the router's default certificate on a name with no web vhost.
 - **All five DNS zones match between primary and secondary**: `l42.eu` 1783445400, `s.l42.eu` 1780876665, `lukeblaney.co.uk` 20, `rowanblaney.co.uk` 17, `tfluke.uk` 25. That matters more than usual, because lucas42/lucos_dns#135 means the secondary holds no zone files on disk and the live sync is all there is.
 - **The deploy pipelines that had failed only on their loganne step were re-run** — configy, docker_mirror, creds, dns and router — and all five reached terminal success. `lucos_firewall` was deliberately not re-run: it reapplies rules on all three hosts, and with lucas42 away the downside of a mistake is locking every agent out of every host, against an upside of a green tick.
-- **A `create-backups` run was triggered end to end** — TBD pending result.
-- **Restored data spot-checked against the README's recorded counts** — TBD pending the backup run finishing, since the backup pauses database containers and querying through that would give false readings.
+- **A `create-backups` run was triggered end to end, and the first attempt failed.** Triggered 02:18:35Z, it reported an error: schedule-tracker showed `errors=1` and loganne recorded no completion event — while all sixteen `lucos_backups` checks stayed green. **Its cause is unknown and unrecovered**: the container drains cron output into a FIFO that is interleaved with the HTTP access log on stdout, and the traceback's body was lost. A second run, triggered 03:24:54Z with output captured to a file, **completed cleanly at 03:39:58Z** — 417 lines ending `Backups Complete`, zero error lines, `errors` back to 0, and loganne recording **"124 archives successfully backed up"**, the same archive count as every pre-incident run. The failure did not reproduce, so it is recorded here as an unexplained single-run transient rather than filed as a defect.
+- **Restored data matches the figures recorded in the rescue README**, checked against the database engines rather than by inspection: contacts **30 tables**, eolas **41 tables**, photos **7 tables with the `vector` extension present**, media_metadata **14,755 tracks and 121,274 tags** with `integrity_check ok` and exactly the nine expected tables, and lucos_worlds' activity log latest at **2026-09-14 00:16:29** — lucas42's final edit, the one no backup contained. The aithne and creds stores could not be queried directly, as both run from images with no shell; they are covered indirectly by their services' own `db` checks, which are green.
+- **aurora holds today's copies.** Reached the documented way, through the backups container's own Fabric path via the xwing gateway: **23 archives dated 2026-09-16** in `/share/backups/host/avalon/volume/`, host directories for avalon and xwing, and 1007 GB free at 73% used. After being unreachable and unchecked throughout the incident, the third copy is confirmed present.
 
-Still to come: the remaining verification items above. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
+**Still open after the rebuild:** `lucos_mail_smtp` (lucas42/lucos_mail#79); the media `weighting` inconsistency, which awaits the weightings recalculation job; `lucos_firewall` and `lucos_monitoring` CI checks, both deliberately left red rather than re-run overnight; and `lucos_media_manager`, whose deploy genuinely failed while the service runs, which is worth understanding rather than papering over. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
