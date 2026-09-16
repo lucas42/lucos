@@ -1,14 +1,15 @@
 # Incident: avalon's single disk failed — estate-wide outage and emergency data rescue
 
-> **Resolved 2026-09-16.** avalon was rebuilt and the estate restored and verified, and all 55 monitored systems are healthy. One recovery remains outstanding and is tracked: the photo originals (lucas42/lucos_photos#525). Source issue: **lucas42/lucos#294**; rebuild runbook: **lucas42/lucos#296**.
+> **Resolved 2026-09-16. Recovery completed the same evening.** avalon was rebuilt and the estate restored and verified, and all 55 monitored systems are healthy. **The photo originals are recovered** — and the premise on which this report first described that recovery was wrong; see "Photos" below, which is the most important correction in this document. Source issue: **lucas42/lucos#294**; rebuild runbook: **lucas42/lucos#296**.
 
 | Field | Value |
 |---|---|
 | **Date** | 2026-09-14 |
-| **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** The last service, `lucos_mail_smtp`, was restored at 07:31 that morning. |
+| **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** The last service, `lucos_mail_smtp`, was restored at 07:31 that morning. **All data recovery finished at 22:34 on 2026-09-16 — about 2 days 15 hours from onset** — the extra day spent recovering photo originals that turned out never to have been lost. |
 | **Severity** | Complete outage (every avalon-hosted service) + data risk |
 | **Services affected** | Everything hosted on avalon, which is nearly the whole estate. That includes aithne (login), contacts, eolas, arachne, media (metadata, manager, seinn, weightings), photos, locations, notes, creds, worlds, backups, loganne, schedule-tracker, monitoring, the `l42.eu` router and DNS primary. Services on xwing/salvare kept running, but lost their dependencies on avalon. |
-| **Still open** | **The photo originals have not been recovered.** They were the one dataset deliberately excluded from backups, and the app-based recovery path doesn't work while the server treats a known hash as "already have it" (lucas42/lucos_photos#525 — see "Photos" below). Everything else is restored and all 55 systems are healthy. |
+| **Still open** | **Nothing.** All data is recovered, including the photo originals, and all 55 monitored systems are healthy. The photos library finished at **2,253 items, fully self-consistent** — every row with its file, every file with its row. What remains is improvement work, not recovery: see "Follow-up Actions". |
+| **Data lost** | **None.** Every dataset was recovered, from a backup, from the rescue, or — for three photos — from the volume copy set aside during the restore. The only casualty is 14 unreadable sectors in `media.sqlite`, repaired to 2 rows restored from the previous day. |
 | **Detected by** | Monitoring alerts from ~07:55 UTC (delivered by email). First acted on by an SRE ops check at 12:15 UTC. |
 
 ---
@@ -19,7 +20,9 @@ avalon runs every one of its services from a **single spinning hard disk with no
 
 Once engaged, the team avoided anything that would write to the disk. lucas42 booted the server into OVH rescue mode that evening, and the data was copied from a read-only mount to xwing, then to salvare. **Every critical database was recovered and verified as a working database**, including lucas42's lucos_worlds edits up to 00:16 UTC on the 14th, which no backup contained. One database file, media_metadata, had unreadable sectors: it was repaired, with only 2 rows restored from the previous day's backup.
 
-Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all.** CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon, and a second, unrelated orb defect hard-fails every build against the container mirror, which is also on avalon. That dictates the order of the restore, and both are covered under "Rebuild" below. The estate was restored through the early hours of 2026-09-16 and verified end to end by 03:39 that morning, including a triggered backup run that copied 124 archives to all three destinations. One service, the outbound mail relay, remains down.
+Kimsufi replaced the disk on 2026-09-15, and lucas42 reinstalled the host the same evening, on Debian trixie and on the same IPv4 address. The rebuild then surfaced a second finding, independent of the disk: **while avalon is down, no project in the estate can build or deploy at all.** CI fetches every project's credentials from `creds.l42.eu`, which runs on avalon, and a second, unrelated orb defect hard-fails every build against the container mirror, which is also on avalon. That dictates the order of the restore, and both are covered under "Rebuild" below. The estate was restored through the early hours of 2026-09-16 and verified end to end by 03:39 that morning, including a triggered backup run that copied 124 archives to all three destinations. The outbound mail relay followed at 07:31.
+
+**A day of recovery work then went into a dataset that had never been lost.** This report, as first merged, stated that the photo originals were excluded from backups and could only come back from lucas42's phone. That was wrong: aurora had held a complete snapshot throughout, and nobody checked. The consequences — a ten-hour resync, a volume/database mismatch, and a second restore to fix it — are set out under "Photos", which is the section to read if you read only one.
 
 ---
 
@@ -58,9 +61,9 @@ All times UTC.
 | 23:21 | **`lucos_root` deploys to the rebuilt avalon and answers on `/_info`.** The deploy pipeline works — though not unaided: per lucos-system-administrator's own account on lucas42/lucos#296, the deploy needed a temporary `LUCOS_DEPLOY_ENV_BASE64` project variable holding a placeholder non-secret envfile, removed immediately afterwards, precisely because creds was down. The bypass is the dependency described under "Rebuild". The only failing step is the loganne deploy log, since loganne is also on avalon and not yet up. |
 | 23:21–23:28 | The test surfaces a blocker: CI fetches every project's credentials from `creds.l42.eu`, on avalon, for both builds and deploys. lucas42/lucos#296's Step 3 order (`lucos_configy` → `lucos_dns` → `lucos_creds`) therefore cannot run as written. A revised sequence is proposed. |
 | 2026-09-16 | lucas42 approves the revised sequence: `lucos_creds` first, via its CI bypass, with its store restored immediately after, then `lucos_configy`, DNS, the router, the firewall and the rest. The sysadmin works down it. (Time not recorded; relayed by team-lead.) |
-| 23:33–23:47 | **`lucos_creds` is deployed**, by selective rerun of its last good pre-incident pipeline (#1324, 2026-09-11), and its store restored from the rescue tarball. Three attempts: the first deploys, the second fails at `Deploy using docker compose` mid-restore, the third succeeds at 23:44:06–23:47:25. In the first and third, every real step passed and only "Send deploy log to loganne" failed, loganne being on avalon and not yet up. (Times and step outcomes read from the CircleCI API.) |
+| 23:33–23:47 | **`lucos_creds` is deployed**, by selective rerun of its last good pre-incident pipeline (CircleCI pipeline 1324, 2026-09-11), and its store restored from the rescue tarball. Three attempts: the first deploys, the second fails at `Deploy using docker compose` mid-restore, the third succeeds at 23:44:06–23:47:25. In the first and third, every real step passed and only "Send deploy log to loganne" failed, loganne being on avalon and not yet up. (Times and step outcomes read from the CircleCI API.) |
 | 23:49:17–23:49:34 | **A fresh `lucos_configy` build fails**, at `lucos/build`. This is the second orb defect described under "Rebuild", not the credentials one. |
-| 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (#682). Again, only the loganne step fails. |
+| 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (CircleCI pipeline 682). Again, only the loganne step fails. |
 | 2026-09-16 | `lucos_backups/init-host.sh` runs successfully, now that creds is up: `/srv/backups` and the `lucos-backups` account exist on avalon (confirmed by team-lead). Next up: `lucos_docker_mirror`, then DNS. |
 | 2026-09-16 | **`lucos_dns_bind` fails to start**: `failed to bind host port 0.0.0.0:53/tcp: address already in use`. systemd-resolved (pid 393) already holds port 53 on the fresh trixie install. Found in dockerd's log, which needed lucas42's root access. The container's empty network attachment and its "healthy but unreachable" appearance were consequences of the failed start, not a Docker networking fault. |
 | 2026-09-16 | **A second finding in the same logs:** dockerd's resolver times out against `127.0.0.53` for `configy.l42.eu` and `schedule-tracker.l42.eu`, so containers on avalon cannot resolve hostnames. Cause not yet established; lucos-system-administrator is preparing a fix for lucas42 to run, since it needs root. |
@@ -76,6 +79,15 @@ All times UTC.
 | 03:24:54 | **A second `create-backups` run is triggered**, output captured to a file. |
 | **03:39:58** | **It completes cleanly — "124 archives successfully backed up"**, the same count as every pre-incident run, copied to xwing, salvare and aurora. **Verification complete; the incident is resolved**, apart from `lucos_mail_smtp`. |
 | 04:20 | aurora confirmed holding 23 archives dated 2026-09-16, reached through the backups container's own path. |
+| 07:31 | **`lucos_mail_smtp` restored** (lucas42/lucos_mail#80). Outbound mail, and therefore alerting, works again. |
+| 08:29 | This report merged as lucas42/lucos#297 — describing the photo originals as unrecoverable. Everything below happened afterwards. |
+| 10:22–12:46 | **A second, post-fix phone resync runs**, delivering 2,253 originals over 10.2 hours of wall-clock (about 32 minutes of actual transfer; the rest is the phone idling). Two videos are rejected — one zero-byte, one truncated. |
+| ~16:00 | **The premise collapses.** Checking `lucos_configy` rather than recalling it shows `lucos_photos_photos` is backed up, and aurora is holding a complete 2026-09-14 snapshot: 2,250 originals, 5,941 files, 11GB. The day's resync was never necessary. |
+| 16:17–16:58 | **The photos volume is restored from aurora** by rsync via the xwing gateway. The existing volume is moved aside rather than overwritten, which is what preserves the three unique originals. |
+| 17:00 | The restore is verified: the live volume matches the snapshot exactly, 0 differences in either direction. It also exposes the mismatch — the database has been running all day while the files came from a fixed point. |
+| ~22:10–22:20 | **The database is restored from the 2026-09-13 nightly** to match the files, on lucas42's diagnosis. Every recorded prediction holds exactly; four consistency counts all reach zero. |
+| 22:33 | **The three unique originals are returned** through the normal upload endpoint, from inside the API container. All 201, processed in under 20 seconds, `taken_at` correct to the millisecond from their own EXIF. |
+| **22:34** | **The photos library is complete and self-consistent at 2,253 items. All recovery is finished.** |
 
 ---
 
@@ -128,7 +140,8 @@ I don't know when the drive's damage began accumulating. SMART's counts carry no
   - SQLite `.recover` rebuilt the database. Compared row by row with the 13 Sep backup, it had lost exactly **2 `track` rows**, restored from that backup, and no tag data, and it held 99 newer tag rows.
   - The resulting `media.final.sqlite` passes `integrity_check`.
 - **Where it all is:** in `~lucos-agent/emergency-backups-2026-09-14/` on **xwing and salvare**. That directory's `README.md` is the restore guide: which file to restore each volume from, how each copy was taken and verified, the media repair step by step, what wasn't copied and why, and sha256 checksums.
-- **What was lost:** the 14 unreadable sectors, whose only known effect is the 2 `track` rows, restored from 13 Sep. Everything not copied was either regenerable, duplicated elsewhere, or deliberately skipped (photo originals, re-syncable from the Android app per lucas42). **No full-disk image was taken**, by lucas42's decision.
+- **What was lost:** the 14 unreadable sectors, whose only known effect is the 2 `track` rows, restored from 13 Sep. Everything not copied was either regenerable, duplicated elsewhere, or deliberately skipped. **No full-disk image was taken**, by lucas42's decision.
+- **A correction to the line above, which originally read "…or deliberately skipped (photo originals, re-syncable from the Android app per lucas42)".** The photo originals were skipped during the rescue on the belief that they were not backed up and would be re-synced from the phone. They *were* backed up — aurora held a complete snapshot — so skipping them in the rescue was in fact the right call, but for the wrong reason, and the wrong reason is what then sent the recovery down a ten-hour path. Right answer, wrong model: the kind of near-miss that only shows up when the model is later asked to carry more weight than it can. See "Photos".
 
 ### DNS: a deadline created by the outage
 
@@ -219,17 +232,54 @@ Three separate faults stacked behind one symptom: a deploy selecting the wrong a
 
 **Worth keeping:** "the image didn't change" is a claim about *which artefact is running*, not about the tag attached to it — and a rebuild, when everything is being re-tagged and re-deployed, is exactly when that assumption is least safe. It is settled by inspecting the running container, not the pipeline's intent.
 
-### Photos: the one dataset still missing, and why its recovery path didn't work
+### Photos: a whole day spent recovering data that was never lost
 
-`lucos_photos_photos` — the photo originals — was the single volume deliberately excluded from backups, on the basis that it could be re-synced from the phone. The rebuild tested that assumption and **it failed**.
+**This is the most important correction in this report, and the thing most worth learning from the incident.**
 
-The database was restored, so it holds 2,141 photo and 111 video rows, each carrying a `sha256_hash`. The files are gone. When the app re-offers a photo, `upload_photo()` looks that hash up **in the database only** and returns `200 "already have it"` before writing anything, discarding the uploaded file. Neither side notices.
+The version above — which is what the report said when it was merged — opened: *"`lucos_photos_photos` was the single volume deliberately excluded from backups, on the basis that it could be re-synced from the phone."*
 
-Observed rather than inferred: in one fifteen-minute window the API answered **619 `POST /photos` requests, every one a 200**, while the volume stayed at **4 files, 6MB** and the row count never moved. Left alone, the resync would have run to completion, reported ~2,252 items "already uploaded", and restored nothing.
+**That was false.** `lucos_photos_photos` was backed up throughout. `lucos_configy`'s `config/volumes.yaml` gives it `recreate_effort: huge`, `backup_strategy: incremental`, and `skip_backup_on_hosts: [salvare, xwing]` — it is skipped **on the two hosts that don't hold it**, and backed up on avalon, where it lives. Read quickly, a `skip_backup_on_hosts` key looks like an exclusion. It is the opposite: it is what a volume that *is* backed up looks like when it only exists on one host.
 
-lucas42 stopped it once this was established. The server-side fix — repair the missing file on re-upload rather than discarding it — is in review as lucas42/lucos_photos#526 against lucas42/lucos_photos#525, and recovering the originals needs that to ship followed by another full resync. **Until then they exist only on the phone.**
+aurora held a complete snapshot the entire time: **2,250 originals, 5,941 files, 11GB**, at `host/avalon/volume-snapshots/lucos_photos_photos/2026-09-14/`. Nobody looked, because everyone already knew there was nothing to find.
 
-The lesson is about the exclusion more than the bug: a dataset left out of backups because "it can be re-synced" is only as safe as its re-sync path, and nobody had exercised that path against the case where the database survives and the files do not.
+The cost of not looking:
+
+- The runbook's plan to re-sync the library from lucas42's phone rested on a premise that was never checked against configy.
+- A first, pre-fix resync ran and restored nothing — that part was a genuine bug (below).
+- A second, post-fix resync transferred **2,253 files over 10.2 hours of wall-clock** to restore files that were already sitting on the NAS.
+- Every downstream consequence in this report — the `cluster_faces` singleton persons, the stranded profile pictures, the database/volume mismatch that then needed its own restore — is a second-order effect of reprocessing a library that did not need reprocessing.
+
+**The dedupe bug was real, and is worth keeping separate from the above.** With the files gone, `upload_photo()` looked a re-offered photo's `sha256_hash` up **in the database only** and returned `200 "already have it"` before writing anything. Observed rather than inferred: in one fifteen-minute window the API answered **619 `POST /photos` requests, every one a 200**, while the volume stayed at **4 files, 6MB**. Left alone, the resync would have reported ~2,252 items "already uploaded" and restored nothing. That is a genuine silent-loss defect, fixed by lucas42/lucos_photos#526 against lucas42/lucos_photos#525, both now merged and closed — and it would have bitten someone eventually. It simply wasn't on the path we needed.
+
+**What to take from it.** The failure was not a missing backup, a broken tool or a bad decision under pressure. It was a **belief about the system that nobody checked against the system**, held confidently by everyone including this report, at a moment when checking cost one `grep` of a config file already checked out on disk. It survived being written into a runbook, into an incident report, into agent memory, and into a day of recovery work — because each of those inherited it from the last rather than from configy.
+
+The generalisable rule: **during an incident, verify what you believe is *absent* at least as carefully as what you believe is present.** A false "we have that" gets caught the moment someone tries to use it. A false "we don't have that" is never caught at all, because nobody goes looking — it just quietly redirects the whole recovery down a more expensive path, and it looks like diligence the entire time.
+
+### The restores that followed, and why a second one was needed
+
+Once the snapshot was found, the photos volume was restored from it by rsync from aurora, completing at ~16:58 on 2026-09-16. That fixed the files and immediately exposed a subtler problem: **the database and the volume now came from different moments.** The database had been restored from the 2026-09-13 backup and had then been *running* all day — accepting 2,253 uploads, minting 769 new person records through face clustering, regenerating thousands of derivatives — while the files it was now paired with were a fixed snapshot. The result was a library that was internally inconsistent in three directions at once: three photo rows with no file, 769 persons whose `profile_photo_id` pointed at a derivative that no longer existed, and 732 person rows with no faces and no links.
+
+The diagnosis came from lucas42, relayed through team-lead in direct conversation rather than on a ticket, so there is no artefact to link and it is paraphrased here rather than quoted. His reading was that the mismatch existed *because* the database had been processing between the two volumes' restores, and that if both came from a backup taken around the same time everything would line up by itself.
+
+That is exactly right, and it generalises well beyond photos: **two volumes captured at the same moment are consistent by construction; no amount of repair work afterwards reproduces that property for free.** Every repair being contemplated at that point — nulling stranded `profile_photo_id`s, collecting orphaned persons, re-deriving thumbnails — was an attempt to reconstruct by inference something that a matched pair of backups provides by definition.
+
+Two facts made it cleanly actionable:
+
+- **The 2026-09-14 photos snapshot is byte-identical to the 2026-09-13 one** — not merely similar. The filenames *and inodes* match exactly in both `originals` and `derivatives`, because the rsync `--link-dest` snapshots hardlink unchanged files. So the restored files were precisely the state as of the 2026-09-13 backup run, and the matching database was that same run's tarball.
+- **The rescued Postgres copy taken off the failing disk contained the same data.** Its newest activity was `2026-09-13 03:04:30Z`; nothing had happened in the service between then and the disk failure. So the two candidate databases were equivalent, and the choice could be made on principle — the nightly, being quiesced and under retention, rather than the rescue, which needed WAL recovery on start.
+
+The database was restored from the 2026-09-13 nightly at ~22:20 on 2026-09-16. Predictions were recorded in advance and every one held exactly: eleven counted fields `2250|2139|111|931|1844|2113|0|0|0|2250|0`, curation unchanged at 127 confirmed faces and 66 contact-linked persons, Alembic already at head with no migration needed, and four consistency counts — rows with no file, files with no row, rows with no thumbnail, persons with no profile picture on disk — **all zero**.
+
+### The three photos that really were unique
+
+Three originals existed only on the live volume and in no backup: two taken on 2026-09-14 *after* the last snapshot, and one from 2026-07-25 that had never reached the server before. They were preserved because the photos restore moved the existing volume aside rather than overwriting it — a precaution worth naming, since it is the only reason this paragraph isn't about data loss.
+
+They were returned through the ordinary upload endpoint from inside the API container, rather than by a second ten-hour phone resync. Two details made that the right call:
+
+- **The server cannot short-circuit a duplicate.** The SHA-256 is computed from the request body *as it streams*, and the "already have it" check happens only after the whole file has arrived. A resync therefore re-transmits all 11GB even when the server already holds every byte. There is no cheap offer, and this is why "just re-sync" is never as free as it sounds.
+- **The files carried their own dates.** All three held EXIF `DateTimeOriginal` with sub-second precision matching their recorded `taken_at` exactly, and the worker treats EXIF as authoritative. Chronology was preserved without anyone having to assert a date by hand.
+
+All three returned 201, processed in under twenty seconds, and landed with `taken_at` correct to the millisecond. Integrity was confirmed by hashing the contents rather than comparing sizes — in this library the filename *is* the SHA-256, which makes the check self-verifying. Final state: **2,253 items, zero inconsistencies.**
 
 ### Restore: three snags worth knowing next time
 
@@ -238,6 +288,35 @@ All three came out of restoring `lucos_creds`, the first service back. They're r
 - **`restore-volume.sh`'s `docker compose up --no-start` isn't safe on a multi-service compose file.** It's designed to recreate one volume's container, and a compose file with several services does more than that.
 - **The rescue tarballs aren't shaped like the nightly ones.** They preserve the full original path inside the archive, so a restore has to move files up a level rather than unpacking in place.
 - **`lucos_creds_ui` cached the wrong SSH host key.** It connected to the freshly-deployed backend before the restore, cached that identity, and then rejected the restored one. Removing its container cleared it. Anything that caches a peer's identity across a restore can do this.
+
+### An 87-byte photos archive from March, and three wrong answers about it
+
+While checking the restored backup set, an **87-byte `lucos_photos_photos.2026-03-06.tar.gz`** turned up on xwing, under `host/avalon/volume/`. An empty archive of the photo library, on a host configy says to skip, is an alarming-looking object, and it took three attempts to explain correctly. The answer is mundane; the three attempts are the interesting part.
+
+**What it actually is**, from configy's history and the database:
+
+| Date | Event |
+|---|---|
+| 2026-02-24 | `lucos_photos_photos` is added to configy (`5b7c41f`). The archive's internal directory mtime is 2026-02-24 17:13 — the volume's creation. |
+| **2026-03-06** | A full backup run tars it to xwing. **The volume is empty**, so the archive is 87 bytes and contains exactly one entry, `./`. |
+| **2026-03-09 14:06:49Z** | The first photo is uploaded — *three days after* the backup. |
+| 2026-03-12 | Photos excluded from salvare (`c26d9c1`). |
+| 2026-04-28 | Photos excluded from xwing, "now aurora is verified" (`f47bea4`). |
+| 2026-06-10 | Photos opted into `backup_strategy: incremental` (`5212311`). |
+
+So it is a **correct backup of a genuinely empty volume**, taken in the three-day window between the volume existing and the first photo arriving, and left behind on a host that stopped receiving photos backups seven weeks later. It is the only volume on xwing with a single fossil archive — every other volume there has 15 to 17 — so this is specific to photos rather than a general pattern.
+
+**One thread is honestly not closed.** The xwing skip did not land until 2026-04-28, `2026-04-06` *is* a retained backup date on that host, and xwing has 88 GB free, so neither the config, retention nor capacity explains why no April archive of the growing library exists. salvare has never held one at all. Not worth chasing further — the data is on aurora and verified — but recorded as unexplained rather than smoothed over.
+
+**The three wrong answers, which are the reason this section exists:**
+
+1. *"A failed or truncated backup."* The intuitive reading of any near-empty archive, and wrong: `tar tzvf` shows a well-formed archive of an empty directory.
+2. *"The volume is correctly skipped on that host."* Reassuring, plausible, and wrong — the skip postdates the file by seven weeks, and a skipped volume produces no archive at all rather than an empty one.
+3. *"It's `lucos_media_import_state`, a self-deleting checkpoint whose empty archive is the success signal."* This one was mine, and it is the most instructive failure of the three. Searching for *"the 87-byte archive"* found a **different** file that happens to be 84–87 bytes too, and I explained the file I had found rather than the file I had been asked about. My first search for photos archives had used a glob that missed the two-level `host/avalon/volume/` path and returned nothing — and **I read that empty output as "no such file exists"** rather than as "my search didn't reach it", which is a rule I already had written down.
+
+That third failure is the same shape as this incident's central lesson, in miniature: a confident negative that nobody checked. It is also a reminder that a coincidence of the specific search term — two unrelated files both 87 bytes — will happily produce a complete, internally consistent, entirely irrelevant explanation.
+
+**Worth keeping regardless:** the reasoning in answer 3 is sound about the file it describes. A working-state file is not a history — checkpoints, cursors and lockfiles are typically created on failure and deleted on success, so their absence means things went well. For "did this job actually run?", the purpose-built sources are schedule-tracker and loganne, not the size of an artefact never meant to persist.
 
 ### Response: corrections made along the way
 
@@ -282,7 +361,17 @@ How it was rebuilt:
 - **Restored data matches the figures recorded in the rescue README**, checked against the database engines rather than by inspection: contacts **30 tables**, eolas **41 tables**, photos **7 tables with the `vector` extension present**, media_metadata **14,755 tracks and 121,274 tags** with `integrity_check ok` and exactly the nine expected tables, and lucos_worlds' activity log latest at **2026-09-14 00:16:29** — lucas42's final edit, the one no backup contained. The aithne and creds stores could not be queried directly, as both run from images with no shell; they are covered indirectly by their services' own `db` checks, which are green.
 - **aurora holds today's copies.** Reached the documented way, through the backups container's own Fabric path via the xwing gateway: **23 archives dated 2026-09-16** in `/share/backups/host/avalon/volume/`, host directories for avalon and xwing, and 1007 GB free at 73% used. After being unreachable and unchecked throughout the incident, the third copy is confirmed present.
 
-**Still open after the rebuild:** **the media queue came back empty** — `lucos_media_manager`'s state was restored from the 2026-09-13 backup, which recorded it as playing with nothing queued, so there is nothing to play until something repopulates it. If anyone reports that their music has stopped in the next few days, that is why, and it is also what keeps lucas42/lucos_media_linuxplayer#146 crash-looping. **The photo originals are still missing** and are the one genuinely outstanding recovery — see "Photos" below. Everything else that was open the morning after has since closed: `lucos_mail_smtp` was fixed at 07:31, the media `weighting` inconsistency was corrected, the deliberately-held CI re-runs all went green, and `lucos_media_manager`'s deploy failure turned out to be a start-up race rather than a bad deploy — the container it created is the one running, on the image that workflow built, and `docker compose up --wait` simply gave up 18.2s in while the healthcheck was still settling. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
+**Final state, 2026-09-16 22:34 — all recovery complete.**
+
+- **Photos: 2,253 items, fully self-consistent.** Every row has its file, every file has its row, every row has a thumbnail, and every one of the 931 persons has its profile picture on disk. Four independent consistency counts, all zero. Manual curation intact throughout: 127 confirmed faces, 66 contact-linked and 66 named persons, unchanged across both restores.
+- **All data recovered.** Nothing was lost. The only permanent damage anywhere is the 14 unreadable sectors in `media.sqlite`, repaired to 2 rows restored from the previous day's backup.
+- **Media weighting repaired** — `cum_weighting` drift 1,738.60 → 0, rows breaking the invariant 5 → 0, row count unchanged.
+- **The 2025-01-06 yearly-retention set is back on avalon**, all nine files.
+- **Mail delivering** since 07:31, so alerting is no longer blind.
+- **55 of 55 monitored systems healthy**, and every CI check raised by the rebuild cleared.
+- Both moved-aside volumes — `lucos_photos_photos_moved-aside-2026-09-16` and `lucos_photos_postgres_data_moved-aside-2026-09-16` — are retained deliberately, pending lucas42's decision. They are the rollback path for the two restores, and the second of them is the only reason the three unique originals survived.
+
+**Still open after the rebuild (superseded — recorded as it stood on the morning of 2026-09-16):** **the media queue came back empty** — `lucos_media_manager`'s state was restored from the 2026-09-13 backup, which recorded it as playing with nothing queued, so there is nothing to play until something repopulates it. If anyone reports that their music has stopped in the next few days, that is why, and it is also what keeps lucas42/lucos_media_linuxplayer#146 crash-looping. **The photo originals were believed still missing at this point** — they were not; see "Photos" and the final state above. Everything else that was open the morning after has since closed: `lucos_mail_smtp` was fixed at 07:31, the media `weighting` inconsistency was corrected, the deliberately-held CI re-runs all went green, and `lucos_media_manager`'s deploy failure turned out to be a start-up race rather than a bad deploy — the container it created is the one running, on the image that workflow built, and `docker compose up --wait` simply gave up 18.2s in while the healthcheck was still settling. Verification must include a **triggered `create-backups` run**, not just green `/_info`s, because backups is a cron path that a green `/_info` cannot exercise.
 
 ---
 
@@ -308,7 +397,14 @@ How it was rebuilt:
 | Restore production SMTP — **done 2026-09-16 07:31** (lucas42/lucos_mail#80, closing lucas42/lucos_mail#79). It was not an unchanged image: the orb deployed a different one built during the rebuild, carrying an unpinned dovecot whose validator rejects `2.4` for `2.4.0` | lucas42/lucos_mail#79 | Done |
 | Pin the dovecot package version so a rebuild can't pick up a stricter validator | lucas42/lucos_mail#81 | Open |
 | Fix deploy version resolution, which picks the newest git tag rather than the checked-out commit — it deployed the wrong artefact and caused the mail outage | lucas42/lucos_deploy_orb#193 | Open — Critical |
-| Recover the photo originals: the server returns 200 for a hash whose file is missing, so the app-based recovery path restores nothing | lucas42/lucos_photos#525 | Open — fix in review as lucas42/lucos_photos#526; needs that merged plus another full resync |
+| Recover the photo originals — **done 2026-09-16 22:34**, and not by the route this report first described. They were never lost: aurora held a complete snapshot throughout. Restored from it, the database matched to it from the 2026-09-13 nightly, and the three genuinely-unique originals returned through the upload endpoint. Final state 2,253 items, four consistency counts all zero | lucas42/lucos_photos#525 | Done — fix merged as lucas42/lucos_photos#526 |
+| Reject zero-byte uploads: a zero-byte video is accepted and stored, and the empty-file hash is a constant, so it is a single global slot every future zero-byte upload collides with | lucas42/lucos_photos#527 | Open |
+| Stop `sweep-chronically-stuck-count` counting healthy backlog as stuck, and stop the per-item warning flooding the log — 116,633 `chronically stuck` warnings in 6.5 hours, 62.5% of the worker's entire log, for 2,182 media items and 769 persons that were merely queued | lucas42/lucos_photos#528 | Open |
+| Make worker stalls diagnosable — a 12-minute silent stall could not be investigated at all: no `faulthandler`, no `py-spy` on avalon, no stack trace obtainable. Three lines to fix | lucas42/lucos_photos#529 | Open |
+| Collect emptied person rows: the policy exists but is wired into the merge helper only, so `assign_person` and `unassign_person` strand orphans. 732 in production before the database restore cleared them; the defect remains and they will re-accumulate | lucas42/lucos_photos#530 | Open |
+| Key the profile-picture backstop on the file rather than the database column — `_enqueue_missing_profile_pictures` filters on `profile_photo_id IS NULL`, so a person whose derivative is missing can never self-heal. Same "DB says yes, disk says no" class as lucas42/lucos_photos#525 | lucas42/lucos_photos#531 | Open |
+| Document that `*-v4.s.l42.eu` names are port-specific deploy routes, not host aliases — they share one NAT address where SSH answers as xwing, so `ssh salvare-v4` silently lands on the wrong host, and anything IPv4-only cannot reach salvare by name at all | lucas42/lucos_dns#136 | Open |
+| Decide when to delete the two moved-aside volumes, `lucos_photos_photos_moved-aside-2026-09-16` and `lucos_photos_postgres_data_moved-aside-2026-09-16` — retained as the rollback path for the two restores. Neither is declared in configy, so neither is backed up; that is acceptable only while they are redundant copies, which they now are. Nothing unique remains in either: the three originals that existed only in the file volume are back in the live one, verified by content hash | lucas42/lucos#306 | Open — decision needed, revisit from 2026-09-30 |
 | Restore the 2025-01-06 yearly-retention set to avalon | lucas42/lucos#296 | Done — all nine files present in `/srv/backups/local/volume/` |
 | Correct the media `weighting` inconsistency left by the repaired database — **done 2026-09-16**, approved by lucas42: `cum_weighting` recomputed as the running sum in existing order, drift **1,738.60 → 0**, rows breaking the invariant **5 → 0**, row count unchanged; pre-change copy on xwing. **My earlier reading that `all-tracks` would repair it was wrong** — that job ran successfully and changed nothing, because `cum_weighting` is only ever maintained incrementally | lucas42/lucos#302 | Done |
 | Give the estate a way to rebuild `cum_weighting`, since nothing can — so any restore or interrupted write leaves it permanently skewed, detectable only by one check | lucas42/lucos_media_metadata_api#340 | Open |
