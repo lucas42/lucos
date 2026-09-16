@@ -244,7 +244,7 @@ How it was rebuilt:
 | Action | Issue / PR | Status |
 |---|---|---|
 | OVH/Kimsufi disk replacement | external support ticket (lucas42) | Done — replaced 2026-09-15 |
-| Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | In progress — host reinstalled and the deploy pipeline confirmed; the restore is running |
+| Rebuild avalon and restore from the emergency backups | lucas42/lucos#296 (runbook) | **Done** — 33 of 34 services restored and externally verified by 2026-09-16 03:39; `lucos_mail_smtp` is the exception, on lucas42/lucos_mail#79 |
 | Decide the rebuilt avalon's disk layout (RAID or a second disk?) | lucas42/lucos#296 (runbook, item 2) | Decided: **stays single-disk for now**, as the server is mid-way through a year-long contract. Revisit at renewal. This raises the value of lucas42/lucos_docker_health#118. |
 | Delete the rescued SSH host keys (`rescue/avalon-ssh-host-keys/`), and the rest of the emergency-backups directory, from xwing and salvare | lucas42/lucos#296 | Deferred by lucas42 — nothing is deleted until everything is restored and working, and it stays a while beyond that. The rebuilt host generated fresh keys, so these were never installed |
 | Correct the emergency-backups README, which named the rescued host-key fingerprint as the one to expect | lucas42/lucos#296 | **Done** — corrected 2026-09-16 01:01, verified against the file on xwing. It now records that the reinstall took the documented fallback and that avalon serves freshly generated keys, with the new fingerprint confirmed three ways |
