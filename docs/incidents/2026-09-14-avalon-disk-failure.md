@@ -8,7 +8,7 @@
 | **Duration** | Onset ~07:55 UTC on 2026-09-14; avalon unmanageable from ~19:21 that day. Disk replaced and host reinstalled 2026-09-15; services restored through the early hours of 2026-09-16, with verification complete at **03:39 UTC on 2026-09-16**. **About 1 day 20 hours.** The last service, `lucos_mail_smtp`, was restored at 07:31 that morning. |
 | **Severity** | Complete outage (every avalon-hosted service) + data risk |
 | **Services affected** | Everything hosted on avalon, which is nearly the whole estate. That includes aithne (login), contacts, eolas, arachne, media (metadata, manager, seinn, weightings), photos, locations, notes, creds, worlds, backups, loganne, schedule-tracker, monitoring, the `l42.eu` router and DNS primary. Services on xwing/salvare kept running, but lost their dependencies on avalon. |
-| **Still open** | **The photo originals have not been recovered.** They were the one dataset deliberately excluded from backups, and the app-based recovery path doesn't work while the server treats a known hash as "already have it" (lucas42/lucos#525 — see "Photos" below). Everything else is restored and all 55 systems are healthy. |
+| **Still open** | **The photo originals have not been recovered.** They were the one dataset deliberately excluded from backups, and the app-based recovery path doesn't work while the server treats a known hash as "already have it" (lucas42/lucos_photos#525 — see "Photos" below). Everything else is restored and all 55 systems are healthy. |
 | **Detected by** | Monitoring alerts from ~07:55 UTC (delivered by email). First acted on by an SRE ops check at 12:15 UTC. |
 
 ---
