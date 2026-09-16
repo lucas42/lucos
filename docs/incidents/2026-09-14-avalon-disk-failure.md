@@ -197,7 +197,9 @@ While `lucos_schedule_tracker` was down, the systems whose only real check comes
 
 This is a different defect from the read-path blocking in lucas42/lucos_monitoring#312, and more dangerous than the other two "green means less than it looks" cases in this report. A container that is healthy with no network, or a backups dashboard that is green after a failed run, is at least *visibly* wrong to anyone who looks at the thing itself. A check that vanishes produces confident reassurance with no natural discovery path: nothing draws attention to a check that is no longer being made. The estate-wide healthy count is the number most likely to be glanced at during an incident, and it counts these systems as fine.
 
-Not filed as its own ticket. It belongs with the accepted-risk question about monitoring's own surfaces on lucas42/lucos_monitoring#300, and I would rather it were decided there than bolted on as another detector.
+Filed as **lucas42/lucos_monitoring#313**. I had first routed this into lucas42/lucos_monitoring#300, and lucos-architect pushed back: that ticket's invariant is about unbounded or blocking work on the read path, and here the read path is fast, unblocked and working perfectly — it is the *answer* that is wrong. Different subject, different failure direction, different remedy. They were right, and an ADR that half-covered this would be worse than one that didn't mention it.
+
+The mechanism, verified against the live API: a system entry carries `checks`, `metrics`, `name` and `status`, with **no declared or expected check set anywhere in the structure**. `checks` holds whatever sources reported, and `status` is computed over that set, so when a source vanishes its checks don't degrade — they cease to exist, and "all checks pass" becomes trivially true over the remainder. The `unknown` bucket is real and reachable by other paths, but a check with no source can never get there. **Absence isn't mis-reported; it's unrepresentable.** What that leaves is a decision rather than a bug: monitoring fails open, where this estate's auth consumers were deliberately made to fail closed.
 
 ### Restore: three snags worth knowing next time
 
