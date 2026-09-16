@@ -61,6 +61,8 @@ All times UTC.
 | 23:49:17–23:49:34 | **A fresh `lucos_configy` build fails**, at `lucos/build`. This is the second orb defect described under "Rebuild", not the credentials one. |
 | 23:52:44–23:55:54 | **`lucos_configy` is deployed** instead by rerunning its 2026-09-08 pipeline (#682). Again, only the loganne step fails. |
 | 2026-09-16 | `lucos_backups/init-host.sh` runs successfully, now that creds is up: `/srv/backups` and the `lucos-backups` account exist on avalon (confirmed by team-lead). Next up: `lucos_docker_mirror`, then DNS. |
+| 2026-09-16 | **`lucos_dns_bind` fails to start**: `failed to bind host port 0.0.0.0:53/tcp: address already in use`. systemd-resolved (pid 393) already holds port 53 on the fresh trixie install. Found in dockerd's log, which needed lucas42's root access. The container's empty network attachment and its "healthy but unreachable" appearance were consequences of the failed start, not a Docker networking fault. |
+| 2026-09-16 | **A second finding in the same logs:** dockerd's resolver times out against `127.0.0.53` for `configy.l42.eu` and `schedule-tracker.l42.eu`, so containers on avalon cannot resolve hostnames. Cause not yet established; lucos-system-administrator is preparing a fix for lucas42 to run, since it needs root. |
 | TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
@@ -143,6 +145,17 @@ lucas42 decided on 2026-09-15 that the credentials half stays as it is, and the 
 
 This is the same concentration risk as the disk, in a different layer: the estate's credential store, its container mirror, its CI dependency, its DNS primary, its monitoring and its alerting all live on one machine. The disk failure made all of them fail together.
 
+### DNS: port 53 was already taken on the new host
+
+`lucos_dns_bind` would not start on the rebuilt avalon: `failed to bind host port 0.0.0.0:53/tcp: address already in use`. systemd-resolved holds port 53 on a stock Debian install, and this host is a stock Debian install in a way the old one had long since stopped being. The symptom that showed first — a container with no network attachment, reporting healthy but unreachable — was a consequence of the failed start, so the obvious reading (a Docker networking fault) pointed away from the cause. It took dockerd's own log, and therefore lucas42's root access, to see it.
+
+Two things make this worth recording rather than filing under bad luck:
+
+- **The runbook never mentioned freeing port 53**, because the old host had been set up long before, by hand, and nobody had had to think about it since. lucas42's own notes carried a link about it that he hadn't followed yet. This is the class of step that only ever surfaces on a rebuild, which is exactly when nobody has done it for years.
+- **`lucos_dns`'s compose file publishes the port on every interface.** I read it on `main`: `ports: ["53:53", "53:53/udp"]`. That is what produces the `0.0.0.0:53` in the error, and it is why the collision is with systemd-resolved's loopback stub listener. Publishing on avalon's public address instead would make the collision structurally impossible, and is an alternative to disabling the stub listener. Which of the two is right is a host-setup decision, not mine.
+
+**The two DNS findings may share a cause, and the fixes interact.** Disabling the stub listener is the usual way to free port 53 — but anything still pointing at `127.0.0.53` then has nothing to talk to, which is what the second finding looks like. I can't check the host to confirm that, so it is a hypothesis rather than a diagnosis; the checks that would settle it are `ss -ulpn | grep :53`, `/etc/resolv.conf`, and `resolvectl status`, all of which need root. Worth settling before the two are fixed independently.
+
 ### Restore: three snags worth knowing next time
 
 All three came out of restoring `lucos_creds`, the first service back. They're reported by lucos-system-administrator; I haven't reproduced them myself, and they're recorded here because the next restore will meet them again.
@@ -202,7 +215,8 @@ Still to come: the rest of the restore, service by service, and then verificatio
 | Rotate credentials possibly exposed on the departing disk: the lucos_creds `server_key` and the aithne credential store. avalon's OS-level host keys are moot, as the rebuild generated fresh ones | lucas42/lucos#298 | Open (Blocked on lucas42/lucos#296) |
 | Document the bootstrap path for CI being unable to build or deploy while `creds.l42.eu` is down | lucas42/lucos#299 | Decided 2026-09-15 — documentation only. lucas42 rejected every option that would give another service its own copy of the credentials, because multiple sources drift. `lucos_creds` is fixed first, then everything else. Ready, owner SRE |
 | Make the mirror login fail open, and stop the mirror probe reading a refused connection as reachable | lucas42/lucos_deploy_orb#188 | Open — the `000000` defect found during this rebuild is recorded there |
-| Reconcile lucas42's own host-setup notes with lucas42/lucos#296's Step 1 into one runbook, marking which steps are his and which the agents' | lucas42/lucos#296 | Open (suggested, after the rebuild) |
+| Reconcile lucas42's own host-setup notes with lucas42/lucos#296's Step 1 into one runbook, marking which steps are his and which the agents'. Freeing port 53 belongs in it, and so does the question of whether `lucos_dns` should publish on the public address rather than every interface | lucas42/lucos#296 | Open (suggested, after the rebuild) |
+| Establish why dockerd's resolver times out against `127.0.0.53` on the rebuilt host | lucas42/lucos#296 | Open — lucos-system-administrator is preparing a fix for lucas42 to run; may share a cause with the port 53 collision |
 | Restore avalon's swapfile to its previous size (~512 MB now, against roughly 4.5 GB before) | lucas42/lucos#296 | Open — flagged by the sysadmin; `lucos_photos_worker` and `redis` were the known memory consumers |
 | Build tooling to rotate the lucos_creds master `data_key` | lucas42/lucos_creds#565 | Open |
 | Make `create-backups` run overnight as designed | lucas42/lucos_backups#415 | Open |
