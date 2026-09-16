@@ -139,6 +139,8 @@ Two practical consequences:
 
 So a fresh build is blocked twice over while avalon is down: once by the publish credentials, once by the mirror probe. Both were worked around the same way, by rerunning a pre-incident pipeline and skipping the build.
 
+lucas42 decided on 2026-09-15 that the credentials half stays as it is, and the answer is to write the bootstrap path down (lucas42/lucos#299). Giving other services their own copies of the credentials would create several sources for the same secrets, which drift; `lucos_creds` carries a bypass for its own bootstrap problem and nothing else needs one. The rule is that if `lucos_creds` is down it gets fixed first, before any other deploy — which is exactly what this rebuild did.
+
 This is the same concentration risk as the disk, in a different layer: the estate's credential store, its container mirror, its CI dependency, its DNS primary, its monitoring and its alerting all live on one machine. The disk failure made all of them fail together.
 
 ### Restore: three snags worth knowing next time
@@ -198,7 +200,7 @@ Still to come: the rest of the restore, service by service, and then verificatio
 | Correct the emergency-backups README, which still names the rescued host-key fingerprint as the one to expect | lucas42/lucos#296 | Open |
 | Clear avalon's old host key wherever a `known_hosts` still holds it | lucas42/lucos#296 | Open — the sysadmin found no `lucos-agent` entries on xwing or salvare; `~lucos-backups/.ssh/known_hosts` needs root to check |
 | Rotate credentials possibly exposed on the departing disk: the lucos_creds `server_key` and the aithne credential store. avalon's OS-level host keys are moot, as the rebuild generated fresh ones | lucas42/lucos#298 | Open (Blocked on lucas42/lucos#296) |
-| Decide what to do about CI being unable to build or deploy anything while `creds.l42.eu` is down | lucas42/lucos#299 | Open (decision) |
+| Document the bootstrap path for CI being unable to build or deploy while `creds.l42.eu` is down | lucas42/lucos#299 | Decided 2026-09-15 — documentation only. lucas42 rejected every option that would give another service its own copy of the credentials, because multiple sources drift. `lucos_creds` is fixed first, then everything else. Ready, owner SRE |
 | Make the mirror login fail open, and stop the mirror probe reading a refused connection as reachable | lucas42/lucos_deploy_orb#188 | Open — the `000000` defect found during this rebuild is recorded there |
 | Reconcile lucas42's own host-setup notes with lucas42/lucos#296's Step 1 into one runbook, marking which steps are his and which the agents' | lucas42/lucos#296 | Open (suggested, after the rebuild) |
 | Restore avalon's swapfile to its previous size (~512 MB now, against roughly 4.5 GB before) | lucas42/lucos#296 | Open — flagged by the sysadmin; `lucos_photos_worker` and `redis` were the known memory consumers |
