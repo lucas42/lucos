@@ -68,6 +68,7 @@ All times UTC.
 | 2026-09-16 | **Port 53 freed**, with `DNSStubListener=no`. lucas42's first pass at the change didn't take — the config still read `yes` after the reboot — which is why the reboot alone didn't fix it. `lucos_dns` is redeployed. |
 | 00:45 | **The router is back.** `https://l42.eu/_info` answers 200 from outside, serving the restored pre-incident certificates rather than newly issued ones. |
 | 01:04 onwards | **Monitoring is deployed and cannot answer.** Every endpoint returns 500 after ~5s, and the container is `Up (unhealthy)`, which also failed its CI deploy job. Cause below. |
+| 01:14 | **`lucos_loganne` is back, and monitoring recovers on its own** — API 200, no restart. SMTP is still down, which shows the dominant blocker was loganne's 60s timeouts rather than the refused mail port: a channel that hangs starves reads, one that refuses does not. |
 | TBD | Data restored from the emergency backups for the remaining volumes. |
 | TBD | Services verified end to end, including a triggered backup run. Incident resolved. |
 
@@ -177,7 +178,7 @@ Every request is served by a synchronous `gen_server:call(StatePid, {fetch, all}
 
 So monitoring was simultaneously working and useless. It detected `lucos dns` and `lucos configy` failing, raised the alerts correctly, could deliver them on neither channel because both live on avalon, and meanwhile its own dashboard returned 500 to anyone asking what was going on. The alert-delivery half is the concrete instance now recorded on lucas42/lucos#295; the blocking half is lucas42/lucos_monitoring#312, with the principle that governs it on lucas42/lucos_monitoring#300, whose ADR already covers the same ground for a different mechanism.
 
-It self-clears once loganne and mail are back, so nothing was restarted. It is also, by construction, a fault that only appears during a serious outage: the worse the estate's health, the less usable its monitoring becomes.
+It self-cleared at 01:14, when loganne alone came back and the API returned 200 with no restart — mail was still down, so the hanging channel, not the refusing one, was what starved reads. It is also, by construction, a fault that only appears during a serious outage: the worse the estate's health, the less usable its monitoring becomes.
 
 ### Restore: three snags worth knowing next time
 
