@@ -44,7 +44,7 @@ Monitoring caught it within a minute and the deploy job went red, but nothing ac
 
 ### Stage 1: a minor-version bump changed a default
 
-SQLAlchemy 2.1 changed which DBAPI a bare `postgresql://` URL loads: psycopg 3 instead of psycopg2. `shared/lucos_photos_common/database.py` built its URL with `drivername="postgresql"`, relying on that default, while every requirements file pins `psycopg2-binary`. Nothing in the code was wrong under 2.0. The change that broke it was a Dependabot requirement bump.
+SQLAlchemy 2.1 changed which DBAPI a bare `postgresql://` URL loads: psycopg 3 instead of psycopg2. `shared/lucos_photos_common/database.py` built its URL with `drivername="postgresql"`, relying on that default, while every requirements file pins `psycopg2-binary`. The code relied on an implicit default that happened to match the installed driver: `psycopg2-binary` was pinned in the requirements but never named in the URL. SQLAlchemy 2.1 changed the default, and a Dependabot requirement bump was all it took to break the match.
 
 ### Stage 2: CI could not see it
 
@@ -52,7 +52,9 @@ Every test engine in `lucos_photos` is SQLite (`api/tests/conftest.py`, `worker/
 
 ### Stage 3: detection worked; response didn't
 
-This isn't a monitoring gap. `lucos_photos` alerted at 07:48:26Z, a minute after the first deploy began, and stayed red. `deploy-avalon` failed on all five post-merge pipelines, and the `circleci` check went red too. Both are the right signals, delivered at the right time. The outage lasted nine hours because nothing acted on them. This is the alert-to-action gap tracked in lucas42/lucos#290.
+This isn't a monitoring gap. `lucos_photos` alerted at 07:48:26Z, a minute after the first deploy began, and stayed red. `deploy-avalon` failed on all five post-merge pipelines, and the `circleci` check went red too. Both are the right signals, delivered at the right time. The outage lasted nine hours because nothing acted on them. This is the human alert-to-action gap tracked in lucas42/lucos#290.
+
+There was also a machine-level response available that deliberately doesn't exist. The new containers replaced the working ones (worker on 1.0.173 at 07:52:16Z) *before* `deploy-avalon`'s health gate failed at 07:53:18Z. The deploy knew within about a minute that the release was bad, and left it running. That's the same failure mode as the 15h24m outage on 2026-08-17 (lucas42/lucos_deploy_orb#192). Auto-rollback was proposed then (lucas42/lucos_deploy_orb#194) and declined by lucas42 on proportionality grounds: "too much complexity to handle a relatively rare occurrence." This incident is new frequency data for that decision: a second multi-hour outage from the same mode six weeks later (15h24m, then 9h14m). It's recorded here as a data point for lucas42, not as a proposal to reopen.
 
 ### Stage 4: the one signal that was acted on was the noisy one
 
@@ -79,7 +81,8 @@ One thing initially looked relevant and wasn't: the investigation started as a c
 | Action | Issue / PR | Status |
 |---|---|---|
 | Pin the driver explicitly (`postgresql+psycopg2`) | lucas42/lucos_photos#547 | Done (deployed 17:05Z) |
-| CI must fail when a built image can't start and reach Postgres with the real driver | lucas42/lucos_photos#548 | Open |
+| CI must fail when a built image can't start and reach Postgres with the real driver | lucas42/lucos_photos#548 (a new instance of the lucas42/lucos#273 class: runtime breakage that CI and `/_info` both miss, here a library bump tested on SQLite but run on Postgres) | Open |
+| A failed deploy leaves the broken release running: second occurrence after lucas42/lucos_deploy_orb#192 (closed not_planned 2026-08-28) | lucas42/lucos_deploy_orb#192 | Data point for lucas42; not reopened |
 | docker_health crash-loop detection: one flat `RestartCount` poll resets the streak, so a long crash-loop still reports success ~1 run in 27 | lucas42/lucos_docker_health#122 | Open |
 | Host daemons' `registry-mirrors` has never served (mirror requires auth); its silent fallback failed the hotfix deploy once | lucas42/lucos#307 (reopened; awaiting lucas42's decision) | Open |
 | Alerts that stay red for hours aren't acted on | lucas42/lucos#290 | Existing; this incident is a data point |
