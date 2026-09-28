@@ -14,7 +14,7 @@
 
 At 07:20–07:27Z Dependabot merged `sqlalchemy>=2.1.0` into `lucos_photos`' api, worker and shared package (lucas42/lucos_photos#541, lucas42/lucos_photos#542, lucas42/lucos_photos#544). SQLAlchemy 2.1 resolves a bare `postgresql` URL to the **psycopg 3** dialect, but the images only ship `psycopg2-binary`. From the first deploy onwards, every database connection raised `ModuleNotFoundError: No module named 'psycopg'`. The api crash-looped in its startup migration (500+ restarts), so photos.l42.eu was down. The worker failed every database touch while its healthcheck stayed green.
 
-Monitoring caught it within a minute and the deploy job went red, but nothing acted on either signal for about nine hours. The fix, lucas42/lucos_photos#547, is a one-line change that names the driver explicitly (`postgresql+psycopg2`). Its first deploy then failed to pull an image through the newly enabled registry mirror (lucas42/lucos#307). A re-run succeeded, and service was restored at **17:05:55Z**.
+Monitoring caught it within a minute and the deploy job went red, but nothing acted on either signal for about nine hours. The fix, lucas42/lucos_photos#547, is a one-line change that names the driver explicitly (`postgresql+psycopg2`). Its first deploy then failed at the image pull, through a registry mirror that has never actually served host pulls (lucas42/lucos#307). A re-run succeeded, and service was restored at **17:05:55Z**.
 
 ---
 
@@ -60,9 +60,9 @@ What finally prompted investigation was `lucos_docker_health` looking **flappy**
 
 A flapping alert invites "it's recovering on its own", and it's the only reason this was looked at when it was. It's worth being clear that flapping didn't help here: the correctly-red `lucos_photos` signal had already been there all day.
 
-### Stage 5: the fix's deploy hit a separate, same-day regression
+### Stage 5: the fix's deploy hit a latent mirror problem
 
-The first deploy of lucas42/lucos_photos#547 failed at the image pull. Since lucas42's docker reload at ~16:29Z enabled `registry-mirrors: ["https://docker.l42.eu"]` (lucas42/lucos#307), the mirror has been returning **401** to avalon's daemon for some images: `pgvector/pgvector` manifests, `lucos_photos_api` blobs and `hello-world`, though `library/python`, `node` and `lucos_navbar` got 200, per the router log. A manual `docker pull` falls back to Docker Hub and succeeds. The deploy's `docker compose pull` at 17:00 didn't fall back. Why the two paths differ isn't yet established; it's tracked on the reopened lucas42/lucos#307. A re-run succeeded, so the mirror cost about 5 minutes here. But any deploy on avalon is currently exposed.
+The first deploy of lucas42/lucos_photos#547 failed at the image pull with `pull access denied … no basic auth credentials`. It was the first photos deploy since lucas42's docker reload at ~16:29Z re-enabled `registry-mirrors: ["https://docker.l42.eu"]` on avalon (lucas42/lucos#307). But the mirror didn't *start* failing then. **The host-daemon mirror has never served a host pull.** In 72h of router logs, all 121 requests from host Docker daemons got 401 and none were served, across all three hosts, because `lucos_docker_mirror` requires basic auth on every registry path and dockerd sends no credentials to a mirror. Hosts have been silently falling back to Docker Hub since April (lucas42/lucos#106). This time the fallback didn't happen. A re-run minutes later fell back and succeeded, so this cost about 5 minutes. Why that one pull didn't fall back isn't established; the analysis and options are on lucas42/lucos#307.
 
 ---
 
@@ -81,7 +81,7 @@ One thing initially looked relevant and wasn't: the investigation started as a c
 | Pin the driver explicitly (`postgresql+psycopg2`) | lucas42/lucos_photos#547 | Done (deployed 17:05Z) |
 | CI must fail when a built image can't start and reach Postgres with the real driver | lucas42/lucos_photos#548 | Open |
 | docker_health crash-loop detection: one flat `RestartCount` poll resets the streak, so a long crash-loop still reports success ~1 run in 27 | lucas42/lucos_docker_health#122 | Open |
-| The `docker.l42.eu` mirror returns 401 to avalon's daemon for some images, and deploy pulls don't fall back | lucas42/lucos#307 (reopened) | Open |
+| Host daemons' `registry-mirrors` has never served (mirror requires auth); its silent fallback failed the hotfix deploy once | lucas42/lucos#307 (reopened; awaiting lucas42's decision) | Open |
 | Alerts that stay red for hours aren't acted on | lucas42/lucos#290 | Existing; this incident is a data point |
 
 ---
