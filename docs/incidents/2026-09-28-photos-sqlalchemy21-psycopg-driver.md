@@ -12,7 +12,7 @@
 
 ## Summary
 
-At 07:20–07:27Z Dependabot merged `sqlalchemy>=2.1.0` into `lucos_photos`' api, worker and shared package (lucas42/lucos_photos#541, lucas42/lucos_photos#542, lucas42/lucos_photos#544). SQLAlchemy 2.1 resolves a bare `postgresql` URL to the **psycopg 3** dialect, but the images only ship `psycopg2-binary`. From the first deploy onwards, every database connection raised `ModuleNotFoundError: No module named 'psycopg'`. The api crash-looped in its startup migration (500+ restarts), so photos.l42.eu was down. Users saw either a request that hung until the browser gave up, or nginx's bare default `502 Bad Gateway` / `504` page; the router has no friendlier upstream-down page for any service. The worker failed every database touch while its healthcheck stayed green.
+At 07:20–07:27Z Dependabot merged `sqlalchemy>=2.1.0` into `lucos_photos`' api, worker and shared package (lucas42/lucos_photos#541, lucas42/lucos_photos#542, lucas42/lucos_photos#544). SQLAlchemy 2.1 resolves a bare `postgresql` URL to the **psycopg 3** dialect, but the images only ship `psycopg2-binary`. From the first deploy onwards, every database connection raised `ModuleNotFoundError: No module named 'psycopg'`. The api crash-looped in its startup migration (500+ restarts), so photos.l42.eu was down. Users saw either a request that hung until the browser gave up, or nginx's bare default `502 Bad Gateway` / `504` page; the router has no friendlier upstream-down page for any service (lucas42/lucos_router#110). The worker failed every database touch while its healthcheck stayed green.
 
 Monitoring caught it within a minute and the deploy job went red, but nothing acted on either signal for about nine hours. The fix, lucas42/lucos_photos#547, is a one-line change that names the driver explicitly (`postgresql+psycopg2`). Its first deploy then failed at the image pull, through a registry mirror that isn't serving host pulls at all (lucas42/lucos#307). A re-run succeeded, and service was restored at **17:05:55Z**.
 
@@ -86,6 +86,7 @@ One thing initially looked relevant and wasn't: the investigation started as a c
 | docker_health crash-loop detection: one flat `RestartCount` poll resets the streak, so a long crash-loop still reports success ~1 run in 27 | lucas42/lucos_docker_health#122 | Open |
 | Host daemons' `registry-mirrors` serves no pulls (0 of 121 in 72h, avalon and xwing; the mirror requires auth); its silent fallback failed the hotfix deploy once | lucas42/lucos#307 (reopened; awaiting lucas42's decision) | Open |
 | Alerts that stay red for hours aren't acted on | lucas42/lucos#290 | Existing; this incident is a data point |
+| No friendly upstream-down page: users got hangs or nginx's bare 502/504 (surfaced by this incident, not caused by it) | lucas42/lucos_router#110 | Open |
 
 ---
 
