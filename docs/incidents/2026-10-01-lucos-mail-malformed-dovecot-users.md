@@ -6,7 +6,7 @@
 | **Duration** | ~4–5 minutes (between 22:51:49 and ~22:52:10 UTC, to 22:56:25 UTC) |
 | **Severity** | Complete outage |
 | **Services affected** | lucos_mail (SMTP on port 25: inbound MX for l42.eu, and the authenticated relay used by lucos_monitoring and the NAS) |
-| **Detected by** | lucos-site-reliability's log watch on `lucos_mail_smtp`, set up for the post-deploy check of lucas42/lucos_mail#84. lucos_monitoring saw the failure but suppressed it inside a deploy window that the failed deploy never closed, so nobody was emailed. |
+| **Detected by** | lucos-site-reliability's log watch on `lucos_mail_smtp`, set up for the post-deploy check of lucas42/lucos_mail#84. lucos_monitoring did not alert. The check for port 25 was still being held as healthy, and the failed deploy's red `circleci` check was suppressed inside a deploy window that the failed deploy never closed. |
 
 ---
 
@@ -33,12 +33,13 @@ The fail-closed check did exactly what it was designed to do. The outage came fr
 | 22:50:31 | lucos_mail CircleCI pipeline 202 is triggered via the API to pick up the new credential. |
 | 22:51:24 | Pipeline 202's `lucos/deploy-avalon` job starts. |
 | 22:51:49 | The deploy opens a lucos_monitoring suppression window for lucos_mail (`PUT /suppress/lucos_mail`). Between here and about 22:52:10, the healthy v1.0.35 container is replaced by v1.0.36, which exits on startup: `DOVECOT_USERS is malformed: …`. **Outage begins.** |
-| 22:52:08 | lucos_monitoring: `Alert suppressed for "lucos_mail" during deploy window`. |
+| 22:52:08 | lucos_monitoring suppresses a `fetch-info` failure for lucos_mail inside the deploy window. It logs its first `port-25-reachable` unknown (`1 recurring failures so far`) and holds the check as healthy. |
 | 22:52:19 | The SRE log watch reports the container restart and six `DOVECOT_USERS is malformed` lines (restart count 6). |
 | 22:52:32 | SRE confirms the container is crash-looping (`status=restarting`, 8 restarts) and that the only change was the credential. |
 | ~22:53 | SRE runs the image's own startup checks against the live value in a throwaway container. Checks 1 and 2 pass; check 3 (CRYPT form) fails on the `campaigns@` line only. Root cause and fix are sent to team-lead, and a terminal notification goes to lucas42. |
 | 22:53:00 | `lucos/deploy-avalon` (job 676) fails because the container never becomes healthy. The old container has already been replaced. The failed deploy sends no `deploySystem` event, so the suppression window stays open. |
-| 22:53:30 | lucos_monitoring: `Alert suppressed for "lucos_mail" during deploy window` (second time). |
+| 22:53:08 – 22:55:08 | `port-25-reachable` unknown count rises 2 → 3 → 4, about once a minute. The check is still held as healthy. |
+| 22:53:30 | lucos_monitoring suppresses a `circleci` failure for lucos_mail (the failed deploy) inside the deploy window, which is still open. |
 | 22:54:45 | lucas42 updates production `DOVECOT_USERS` with a corrected `campaigns@` line. |
 | 22:55:02 | lucos_mail pipeline 204 is triggered. |
 | 22:56:23 | `lucos_mail_smtp` v1.0.37 starts. |
@@ -85,18 +86,21 @@ What this incident adds is that a credential edit is **deferred damage**. lucos_
 
 lucos-architect frames this as the check running at the latest possible moment, after the old container is gone. The same check at credential-write time, or as a pre-deploy step, would have turned this outage into a refused change. The editing step that introduced the fault has its own weakness. Writing every `$` as `$$` is a manual step on a 100-character secret, with no preview, and the only feedback is a failed deploy later (lucos-ux, lucos-architect).
 
-### Detection: monitoring saw it, but a failed deploy kept alerts suppressed
+### Detection: two separate gaps meant no alert
 
-lucos_monitoring *did* detect the outage. Its log shows `Alert suppressed for "lucos_mail" during deploy window` at 22:52:08 and 22:53:30. Nobody was emailed, because of how deploy windows end:
+No `monitoringAlert` was raised. lucos_monitoring's log and loganne's `monitoringAlertSuppressed` events (sent at `level: detail`, lucas42/lucos_monitoring#270) show two independent reasons.
 
-- The deploy orb opens the window before `docker compose up` (`PUT /suppress/lucos_mail` at 22:51:49).
-- Nothing in the orb closes it. Closing relies on the `deploySystem` loganne event, which lucos_loganne's webhook forwards to `monitoring.l42.eu/suppress/clear`, and that event is only sent for a **successful** deploy.
-- Pipeline 202's deploy failed at 22:53:00 without sending one, so the window stayed open, with alerts suppressed, until pipeline 204's successful deploy closed it at 22:56:32. That was after service had already been restored.
-- A window left open is bounded: after 10 minutes lucos_monitoring re-evaluates and alerts on a sustained failure (lucas42/lucos_monitoring#266). This outage ended inside that 10 minutes, so it never alerted, and recovery was logged as `with no prior alert`.
+**1. The port check could not alert this quickly.** `port-25-reachable` classifies a refused connection as `ok: unknown` (`classifyConnectError` in `fetcher_ports.erl`). The UnknownsGate holds an unknown as the previous value until 5 consecutive unknowns from its own source, and port probes run about every 60 seconds. Monitoring's log shows the count reaching 1, 2, 3 and 4 at 22:52:08, 22:53:08, 22:54:08 and 22:55:08. Service came back at 22:56:25, before the 5th, so the check never reached a failing state. A refused public port needs about 5–6 minutes of continuous refusal to alert, so any shorter outage is invisible.
 
-The suppressed alerts also weren't visible in the loganne query used during the incident, because `monitoringAlertSuppressed` events are sent at `level: detail` (lucas42/lucos_monitoring#270).
+This came from two decisions two days apart. lucas42/lucos_monitoring#279 raised the gate from 3 to 5 for third-party CircleCI blips, on the premise that it didn't affect direct probes. Then lucas42/lucos_monitoring#281 put the port probes behind it. Tracked as lucas42/lucos_monitoring#316.
 
-Separately, even without suppression, the `port-25-reachable` check might not have escalated a 4–5 minute outage. A refused connection is reported as `unknown`, not a failure (`classifyConnectError` in `fetcher_ports.erl`), and it only becomes a failure after 5 consecutive unknown polls at roughly 60-second intervals. This comes from reading the code, not from observing this incident. Which check produced the two suppressed alerts isn't recorded in the log lines.
+**2. A failed deploy keeps alerts suppressed.** The deploy orb opens a suppression window before `docker compose up` (`PUT /suppress/lucos_mail` at 22:51:49). Nothing in the orb closes it: closing relies on the `deploySystem` loganne event, which lucos_loganne's webhook forwards to `monitoring.l42.eu/suppress/clear`, and that event is only sent for a **successful** deploy.
+
+Pipeline 202's deploy failed at 22:53:00 without sending one, so the window stayed open until pipeline 204's successful deploy closed it at 22:56:32. Inside it, two failures for lucos_mail were suppressed:
+- `fetch-info` at 22:52:08. Probably churn from `lucos_mail_docs` being recreated in the same deploy, but not verified.
+- `circleci` at 22:53:30. That is the failed deploy itself. With the window closed, it would have alerted then, three minutes before service came back.
+
+A window left open is bounded: after 10 minutes lucos_monitoring re-evaluates and alerts on a sustained failure (lucas42/lucos_monitoring#266). This outage ended inside that 10 minutes, and recovery was logged at 22:57:08 as `with no prior alert`. Tracked as lucas42/lucos_deploy_orb#204.
 
 The outage was found only because an SRE log watch happened to be running for the lucas42/lucos_mail#84 post-deploy check.
 
@@ -115,7 +119,8 @@ Nothing was attempted that failed. A container restart was deliberately **not** 
 | Decide whether a malformed `DOVECOT_USERS` line should take down only that account rather than the whole service. If approved, it must come with lucos-security's and lucos-developer's conditions: write only validated lines, stay fail-closed when no line is valid, never echo a skipped line, and make skips visible to monitoring. The ticket also covers the alternatives: validating a value before saving it, one credential per account, or a `$`-free hash scheme. | lucas42/lucos_mail#85 | Awaiting decision |
 | Remove the manual `$$` escaping step, the confirmed root cause, rather than documenting it better. lucas42 proposed keeping real passwords in lucos_creds instead of hand-typed hashes. After lucos-architect's and lucos-security's assessment, the recommended design goes further: SMTP passwords become lucos_creds **linked credentials** generated by lucos_creds, so nobody types them at all. Related transport work: lucas42/lucos_creds#484 (ADR-0006). | lucas42/lucos_mail#86 | Awaiting decision |
 | Validate the value before it can do damage, either at credential-write time, as a pre-deploy step, or with a standalone check plus an escaping command in the README. Also name the failing line and rule in the startup error. These are tracked as options alongside the per-line decision. | lucas42/lucos_mail#85 | Awaiting decision |
-| Make a failed deploy end its monitoring suppression window, so an outage it causes alerts on the normal thresholds rather than after 10 minutes. | lucas42/lucos_deploy_orb#204 | Open |
+| Make a failed deploy end its monitoring suppression window, so an outage it causes alerts on the normal thresholds rather than after 10 minutes. | lucas42/lucos_deploy_orb#204 | Ready |
+| Let a refused public port alert in about 2 polls rather than about 5–6: classify `econnrefused` as a failure in port probes, instead of putting it behind the 5-poll UnknownsGate. | lucas42/lucos_monitoring#316 | Open |
 
 Already tracked elsewhere and not caused by this incident: AUTH offered before STARTTLS on port 25 (lucas42/lucos_mail#83); Dovecot's own auth logs being dropped inside the container, which was noted during the post-deploy check and deliberately not ticketed unless a mismatch occurs.
 
