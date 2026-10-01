@@ -24,6 +24,8 @@ The fail-closed check did exactly what it was designed to do. The outage came fr
 
 | Time (UTC) | Event |
 |---|---|
+| 22:10:52 | lucos-code-reviewer approves lucas42/lucos_mail#84, noting that the production `DOVECOT_USERS` must have every `$` written as `$$`, which it can't verify. |
+| 22:22:48 | lucas42 approves lucas42/lucos_mail#84. |
 | 22:23:02 | lucas42/lucos_mail#84 merged: SASL users are now sourced from lucos_creds `DOVECOT_USERS`, and the container fails closed if the value is malformed. |
 | 22:24:35 | `lucos_mail_smtp` v1.0.35 starts with two valid users, `monitoring@l42.eu` and `nas@l42.eu`. Post-deploy verification and an SRE log watch begin. |
 | 22:37:57 | lucas42/lucos_campaigns#58 merged: lucos_campaigns can send through lucos_mail. |
@@ -65,15 +67,23 @@ The check validates the users file as a whole. Any malformed line, including one
 
 The fail-closed design was deliberate: the comment in `startup.sh` says it exists to *"reject them rather than start with logins that can never succeed"*. It worked as designed. The trade-off it implies is that the *availability* of the whole service depends on every line in a hand-edited credential being right.
 
+lucos-architect's review argues this escalation isn't actually *required* by fail-closed. A malformed hash can't authenticate anyone, so dropping only its line is still fail-closed for that account. Rejecting the whole file instead turned a one-account fault into a service-wide outage, including inbound MX, which doesn't use SASL at all. Reviewers disagree on what should happen when *no* line is valid. That question, and the whole-file versus per-line choice, are with lucas42 in lucas42/lucos_mail#85.
+
+### Contributing factor: the error didn't say what was wrong
+
+The startup error (`DOVECOT_USERS is malformed: want one <address>:{scheme}hash per line …`) is the same message for all three checks. It names neither the failing line nor the rule. Finding that it was check 3 on the `campaigns@` line took a reproduction in a throwaway container. Printing the line number, the address and the failed rule would have given the cause straight away, without exposing any hash. (Raised by lucos-ux.)
+
 ### Contributing factor: a deploy replaces a working container before the new one proves healthy
 
 The `lucos/deploy-avalon` job replaced the running v1.0.35 container, then failed when v1.0.36 never became healthy. There is no rollback, so the failed deploy left the service down until a fixed deploy followed. This is a known, accepted property of estate deploys, not something specific to lucos_mail. lucas42/lucos_deploy_orb#192 ("A failed deploy leaves the service DOWN, with no working rollback") is closed as not planned. lucas42 closed the auto-rollback implementation, lucas42/lucos_deploy_orb#194, unmerged: *"No. This is adds much too complexity to handle a relatively rare occurrence."* No rollback follow-up is proposed here.
 
 What this incident adds is that a credential edit is **deferred damage**. lucos_creds does no validation on write, and lucos_mail's CI never sees production credentials. So the first place a malformed `DOVECOT_USERS` gets checked is inside the deploy that replaces the working container. Here the deploy was triggered by the edit itself, so the two were minutes apart. They could equally have been days apart. (Point raised by lucos-system-administrator in review.)
 
+lucos-architect frames this as the check running at the latest possible moment, after the old container is gone. The same check at credential-write time, or as a pre-deploy step, would have turned this outage into a refused change. The editing step that introduced the fault has its own weakness. Writing every `$` as `$$` is a manual step on a 100-character secret, with no preview, and the only feedback is a failed deploy later (lucos-ux, lucos-architect).
+
 ### Detection: no monitoring alert
 
-lucos_monitoring has a `port-25-reachable` check for lucos_mail, but loganne has no `monitoringAlert` for lucos_mail during the outage. **Why is unverified.** The likeliest explanation is that the deploy windows of pipelines 202 and 204 suppressed alerting for nearly the whole outage. The outage started inside the first deploy window, and the gap between them was 22:53:00 to 22:55:02, about two minutes. The outage was found only because an SRE log watch happened to be running for the #84 post-deploy check.
+lucos_monitoring has a `port-25-reachable` check for lucos_mail, but loganne has no `monitoringAlert` for lucos_mail during the outage. **Why is unverified.** The likeliest explanation is that the deploy windows of pipelines 202 and 204 suppressed alerting for nearly the whole outage. The outage started inside the first deploy window, and the gap between them was 22:53:00 to 22:55:02, about two minutes. The outage was found only because an SRE log watch happened to be running for the lucas42/lucos_mail#84 post-deploy check. If deploy-window suppression is confirmed, a failed deploy arguably should end suppression or raise its own alert (lucos-architect). That stays conditional until the hypothesis is checked.
 
 ---
 
@@ -88,7 +98,8 @@ Nothing was attempted that failed. A container restart was deliberately **not** 
 | Action | Issue / PR | Status |
 |---|---|---|
 | Decide whether a malformed `DOVECOT_USERS` line should take down only that account rather than the whole service. If approved, it must come with lucos-security's and lucos-developer's conditions: write only validated lines, stay fail-closed when no line is valid, never echo a skipped line, and make skips visible to monitoring. The ticket also covers the alternatives: validating a value before saving it, one credential per account, or a `$`-free hash scheme. | lucas42/lucos_mail#85 | Awaiting decision |
-| Depending on how the `#` got in, a guard or documentation fix for writing `$$`-escaped hashes into lucos_creds. | TBD | Pending lucas42's account of the root cause |
+| Remove the manual `$$` escaping step: the transport-versus-content handling of key-typed secrets, rather than a documentation fix. Pending lucas42's account of how the `#` got in. | lucas42/lucos_creds#484 (ADR-0006) | Open, undecided |
+| Validate the value before it can do damage, either at credential-write time, as a pre-deploy step, or with a standalone check plus an escaping command in the README. Also name the failing line and rule in the startup error. These are tracked as options alongside the per-line decision. | lucas42/lucos_mail#85 | Awaiting decision |
 
 Already tracked elsewhere and not caused by this incident: AUTH offered before STARTTLS on port 25 (lucas42/lucos_mail#83); Dovecot's own auth logs being dropped inside the container, which was noted during the post-deploy check and deliberately not ticketed unless a mismatch occurs.
 
