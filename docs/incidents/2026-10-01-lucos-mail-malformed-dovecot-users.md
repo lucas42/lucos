@@ -12,7 +12,7 @@
 
 ## Summary
 
-lucas42/lucos_mail#84 changed lucos_mail so that its SASL users file is written at startup from the `DOVECOT_USERS` credential, and so that the container refuses to start if that value is malformed. About 25 minutes after it deployed, a third account (`campaigns@l42.eu`, for lucas42/lucos_campaigns#19) was added to the production credential. Its new line had a stray `#` after every `$` in the crypt hash.
+lucas42/lucos_mail#84 changed lucos_mail so that its SASL users file is written at startup from the `DOVECOT_USERS` credential, and so that the container refuses to start if that value is malformed. About 25 minutes after it deployed, a third account (`campaigns@l42.eu`, for lucas42/lucos_campaigns#19) was added to the production credential. Its new line had a stray `#` after every `$` in the crypt hash: a slip while hand-escaping each `$` as `$$`, because `#` sits next to `$` on the keyboard.
 
 The next lucos_mail deploy replaced the working container with one that failed the startup check on every attempt. Port 25 stopped answering for about four to five minutes, until lucas42 corrected the credential and redeployed.
 
