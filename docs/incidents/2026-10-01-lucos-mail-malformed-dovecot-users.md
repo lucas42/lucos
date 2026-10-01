@@ -57,7 +57,7 @@ Confirmed by reproduction. The image's startup validation (`postfix/config/start
 - Check 3 (every `CRYPT` hash in `$id$salt$hash` form) **failed, on the `campaigns@l42.eu` line only**.
 - In that line, each of the three `$` separators was followed by a `#`, so the crypt id read `#6` instead of `6`. Removing the three `#` gave field lengths identical to the two valid lines: 16-character salt, 86-character hash. The hash itself looks intact.
 
-**How the `#` characters got there is not yet known (TBD, lucas42).** The credential is entered by hand. It needs every `$` written as `$$` because Compose would otherwise interpolate it (see the comment in `startup.sh` and the lucos_mail README). My guess is that this escaping went wrong in a way that left a `#` behind each `$`, but I haven't been able to confirm that without lucas42's account of how the line was produced.
+**How the `#` characters got there is not yet known (TBD, lucas42).** The credential is entered by hand. It needs every `$` written as `$$` because Compose would otherwise interpolate it (see the comment in `startup.sh` and the lucos_mail README). lucos-developer, the author of the check, doubts that a `#` after every `$` comes from the `$$` escaping the README asks for. lucos-system-administrator notes that `#` starts a comment in `.env` files. Neither has been tested, and neither is offered here as a cause.
 
 ### Contributing factor: one bad line rejects every account
 
@@ -67,7 +67,9 @@ The fail-closed design was deliberate: the comment in `startup.sh` says it exist
 
 ### Contributing factor: a deploy replaces a working container before the new one proves healthy
 
-The `lucos/deploy-avalon` job replaced the running v1.0.35 container, then failed when v1.0.36 never became healthy. There is no rollback, so the failed deploy left the service down until a fixed deploy followed. This is ordinary estate-wide deploy behaviour, not specific to lucos_mail. Here it turned a bad *credential* edit into an outage on the very next deploy.
+The `lucos/deploy-avalon` job replaced the running v1.0.35 container, then failed when v1.0.36 never became healthy. There is no rollback, so the failed deploy left the service down until a fixed deploy followed. This is a known, accepted property of estate deploys, not something specific to lucos_mail. lucas42/lucos_deploy_orb#192 ("A failed deploy leaves the service DOWN, with no working rollback") is closed as not planned. lucas42 closed the auto-rollback implementation, lucas42/lucos_deploy_orb#194, unmerged: *"No. This is adds much too complexity to handle a relatively rare occurrence."* No rollback follow-up is proposed here.
+
+What this incident adds is that a credential edit is **deferred damage**. lucos_creds does no validation on write, and lucos_mail's CI never sees production credentials. So the first place a malformed `DOVECOT_USERS` gets checked is inside the deploy that replaces the working container. Here the deploy was triggered by the edit itself, so the two were minutes apart. They could equally have been days apart. (Point raised by lucos-system-administrator in review.)
 
 ### Detection: no monitoring alert
 
@@ -83,12 +85,10 @@ Nothing was attempted that failed. A container restart was deliberately **not** 
 
 ## Follow-up Actions
 
-TBD. To be settled with lucas42's account of the root cause and the team's responses on this draft. Candidates under consideration, none filed yet:
-
 | Action | Issue / PR | Status |
 |---|---|---|
-| Decide whether a malformed `DOVECOT_USERS` line should take down only that account (logged loudly) rather than the whole service. This trades against #84's deliberate fail-closed choice, so it needs lucas42's decision. | TBD | Proposed |
-| Depending on how the `#` got in, a guard or documentation fix for writing `$$`-escaped hashes into lucos_creds. | TBD | Pending root-cause detail |
+| Decide whether a malformed `DOVECOT_USERS` line should take down only that account rather than the whole service. If approved, it must come with lucos-security's and lucos-developer's conditions: write only validated lines, stay fail-closed when no line is valid, never echo a skipped line, and make skips visible to monitoring. The ticket also covers the alternatives: validating a value before saving it, one credential per account, or a `$`-free hash scheme. | lucas42/lucos_mail#85 | Awaiting decision |
+| Depending on how the `#` got in, a guard or documentation fix for writing `$$`-escaped hashes into lucos_creds. | TBD | Pending lucas42's account of the root cause |
 
 Already tracked elsewhere and not caused by this incident: AUTH offered before STARTTLS on port 25 (lucas42/lucos_mail#83); Dovecot's own auth logs being dropped inside the container, which was noted during the post-deploy check and deliberately not ticketed unless a mismatch occurs.
 
@@ -104,3 +104,5 @@ Already tracked elsewhere and not caused by this incident: AUTH offered before S
 The incident concerns a credential (`DOVECOT_USERS`, SMTP password hashes). This report describes only its structure: line count, account names, hash scheme and field lengths. No hash or salt values are included.
 
 During recovery verification, a faulty `sed` in the SRE's structure-only check printed the three full SHA512-crypt hashes into the SRE agent's **local** tool output. They were not posted to GitHub, sent to any teammate, or written to disk, but they are present in that session's transcript.
+
+lucos-security's assessment: no emergency action is needed. Fold the three accounts into the next rotation, unless any underlying password is human-chosen, in which case rotate that one now. Whether to rotate `campaigns@l42.eu` early is lucas42's call, since rotating means re-entering both sides by hand. The SRE persona now requires secret structure checks to print derived lengths only, never values, in `agents/lucos-site-reliability.md` and `references/agent-github-identity.md` in lucas42/lucos_claude_config. lucos-security also checked this report's diff and found no hash or salt material in it.
