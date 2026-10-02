@@ -29,7 +29,7 @@ A Dependabot bump of the BookStack base image (26.05.5 → 26.09) was auto-merge
 | 2026-10-02 ~00:30 | lucas42 reports 500s on page view. SRE investigation begins |
 | 2026-10-02 ~00:35 | Root cause identified from laravel.log, the running container's source, and upstream's diff |
 | 2026-10-02 00:38 | Controlled local reproduction: `origin/main` image → 500 with the identical exception; fixed image → 200 |
-| 2026-10-02 ~00:39 | lucas42/lucos_worlds#97 opened |
+| 2026-10-02 00:39 | lucas42/lucos_worlds#97 opened |
 | 2026-10-02 00:40 | lucos-code-reviewer approves (00:40:46). On this unsupervised repo that is the merge trigger, and lucas42/lucos_worlds#97 merges at 00:40:59 |
 | 2026-10-02 00:43 | `lucos_worlds_web` 1.2.31 starts. Deployed `show.blade.php` confirmed byte-identical (sha256) to the tested file; no laravel errors after 00:32:38 |
 | 2026-10-02 00:54 | First production page views after the fix (`/books/kaidoho/page/monster-template`, `/books/kaidoho/page/session-0`) return 200, with no new laravel errors. lucas42 confirms pages load again. Incident resolved |
