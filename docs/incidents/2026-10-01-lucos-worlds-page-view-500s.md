@@ -54,15 +54,29 @@ ViewException: Undefined variable $pageNav (View: /app/www/resources/views/pages
 
 Confirmed by: the exception logged for each production 500 (matched one-for-one against the nginx access log), and a controlled reproduction with the `origin/main` image against a fresh database, which gave the same exception. The fixed image rendered the same page with 200.
 
-### Contributing factor: nothing guards patched files against upstream drift
+### Contributing factor: the version number hid a feature release
 
 The base-image bump went through Dependabot auto-merge without a human looking at it, which is the intended design for minor/patch bumps. However, BookStack versions are calendar-based: 26.05.5 → 26.09 is a new feature release, not a patch, even though Dependabot's minor-and-patch grouping treated it as one. That release is the one that refactored the page view.
 
-CI had no test that rendered the patched view, despite the Dockerfile's stated intent that the patch tests exist "so a future Dependabot BookStack version bump can't silently break it". `test-oidc-es256` covers login, and `test-page-excerpt` unit-tests `Page::getExcerpt()` as a model method. Nothing requested a page, so lucas42/lucos_worlds#95 went green. In the same bump, two other patched files (`Page.php`, docblock only; `OidcJwtWithClaims.php`, one removed line) also changed upstream, and our copies silently revert those changes. Both are harmless this time. lucos-security confirmed that the `array_filter` retained in `OidcJwtWithClaims.php` is a no-op, since every entry is a key object. But the mechanism is the same, and three of the five patches sit in the OIDC login/token-verification path. A future upstream verification fix there would be silently reverted too, so the guard has security value as well as reliability value. Tracked in lucas42/lucos_worlds#98, with a complementary CI render smoke test in lucas42/lucos_worlds#99.
+### Contributing factor: CI was looking, but at the wrong surface
+
+CI did run against the real patched image on lucas42/lucos_worlds#95. All four test jobs (`test-info-endpoint`, `test-oidc-alg-binding`, `test-oidc-es256`, `test-page-excerpt`) passed before the auto-merge, so the failure was coverage, not absence.
+
+A whole-file patch has two surfaces: our hunk, and the frozen remainder of upstream's file. `test-page-excerpt` unit-tests our hunk (`Page::getExcerpt()`) and never renders `show.blade.php`. The Dockerfile comment saying that test stops a Dependabot bump from "silently regress[ing]" this was true of the hunk and false of the remainder. No job requested a page.
+
+That is the argument for the upstream-hash guard (lucas42/lucos_worlds#98) as the primary defence. It covers the remainder of *every* patched file, whatever any one test happens to exercise. lucas42/lucos_worlds ADR-0002 currently names integration tests as "the sole defence (lucas42's mandate)" against upgrade breakage, so the guard adds a second defence alongside his decision and needs his agreement. A CI render smoke test (lucas42/lucos_worlds#99) complements it by catching wrongly re-applied hunks and upstream changes to files we don't patch.
+
+### Contributing factor: other patches drifted too
+
+In the same bump, two other patched files also changed upstream, and our copies silently revert those changes:
+- `Page.php`: the drift is docblock-only.
+- `OidcJwtWithClaims.php`: upstream removed one line, `array_filter($parsedKeys)`. lucos-security reviewed it and found the retained line is a no-op, since every entry is a key object, and the `alg()` check still runs. `test-oidc-es256` also passed on lucas42/lucos_worlds#95.
+
+The other two OIDC patch targets (`OidcProviderSettings.php`, `OidcJwtSigningKey.php`) are byte-identical upstream between v26.05.5 and v26.09, so they did not drift in this bump. Three of the five patches sit in the OIDC login/token-verification path, so a future upstream verification fix there would be silently reverted too. The guard therefore has security value as well as reliability value.
 
 ### Contributing factor: detection depended on a human opening a page
 
-`/_info` checks BookStack's dependencies (database, cache, session), not rendering, so it stayed green. That is consistent with `/_info`'s availability-not-correctness boundary, and build-time checks (lucas42/lucos_worlds#98, lucas42/lucos_worlds#99) catch this earlier and more cheaply, so no runtime render check is proposed. The low traffic turned a deploy-time break into a 2.5-day latent one. That cost nothing here, because nobody needed a page in that window, but it means the "breaking change" and the "outage" were 60 hours apart. Anyone working backwards from the report time would have looked at the wrong deploy.
+`/_info` checks BookStack's dependencies (database, cache, session), not rendering, so it stayed green. That is consistent with `/_info`'s availability-not-correctness boundary, and build-time checks (lucas42/lucos_worlds#98, lucas42/lucos_worlds#99) catch this earlier and more cheaply, so no runtime render check is proposed for this repo. The estate-level question of runtime breakage that CI and `/_info` both miss is open in lucas42/lucos#273, and this incident is a fifth base-image data point for it. The low traffic turned a deploy-time break into a 2.5-day latent one. That cost nothing here, because nobody needed a page in that window, but it means the "breaking change" and the "outage" were 60 hours apart. Anyone working backwards from the report time would have looked at the wrong deploy.
 
 ---
 
@@ -78,7 +92,8 @@ CI had no test that rendered the patched view, despite the Dockerfile's stated i
 | Action | Issue / PR | Status |
 |---|---|---|
 | Re-base patched `show.blade.php` on BookStack v26.09 | lucas42/lucos_worlds#97 | Done |
-| Build-time upstream-hash guard on all whole-file patches, plus re-basing the drifted patches (OIDC first) | lucas42/lucos_worlds#98 | Open |
+| Build-time upstream-hash guard on all whole-file patches, plus re-basing the drifted patches (OIDC first). Needs lucas42's agreement, since it adds a second defence alongside ADR-0002's tests-only mandate. lucos-architect will then write a lucos_worlds ADR for the patch-carrying policy | lucas42/lucos_worlds#98 | Open (awaiting lucas42) |
+| Estate convention for runtime breakage that CI and `/_info` both miss (this incident is a fifth data point) | lucas42/lucos#273 | Open |
 | CI render smoke test: build the image, create a page, GET it, assert 200 | lucas42/lucos_worlds#99 | Open |
 
 ---
