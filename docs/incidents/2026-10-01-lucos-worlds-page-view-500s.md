@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-10-01 |
-| **Duration** | Broken image live from 2026-09-29 08:40 UTC. User-visible from 2026-10-01 20:57 UTC (first page view) to 2026-10-02 00:43 UTC (fix deployed, lucas42/lucos_worlds#97; production page-view confirmation TBD) |
+| **Duration** | Broken image live from 2026-09-29 08:40 UTC. User-visible from 2026-10-01 20:57 UTC (first page view) to 2026-10-02 00:43 UTC (fix deployed, lucas42/lucos_worlds#97). About 3h46m of user-visible impact, though only during the 20:57–21:03 and 00:29–00:32 windows was anyone actually trying to read |
 | **Severity** | Complete outage of page viewing (the service's core read path). Login, book and shelf lists, and `/_info` still worked |
 | **Services affected** | lucos_worlds |
 | **Detected by** | User report (lucas42). Monitoring stayed green throughout |
@@ -12,7 +12,7 @@
 
 ## Summary
 
-A Dependabot bump of the BookStack base image (26.05.5 → 26.09) was auto-merged and deployed on 2026-09-29. BookStack 26.09 refactored the page view's sidebars, and lucos_worlds overrides that view with a whole-file patched copy written against the older version. From that deploy on, every page view returned HTTP 500 (`Undefined variable $pageNav`). Nobody opened a page for about 2.5 days, so the outage was first hit, and reported, on the evening of 2026-10-01. The fix (lucas42/lucos_worlds#97) re-bases the patched view on upstream 26.09. The fix was deployed at 00:43 UTC on 2026-10-02. Confirmation from a production page view is TBD.
+A Dependabot bump of the BookStack base image (26.05.5 → 26.09) was auto-merged and deployed on 2026-09-29. BookStack 26.09 refactored the page view's sidebars, and lucos_worlds overrides that view with a whole-file patched copy written against the older version. From that deploy on, every page view returned HTTP 500 (`Undefined variable $pageNav`). Nobody opened a page for about 2.5 days, so the outage was first hit, and reported, on the evening of 2026-10-01. The fix (lucas42/lucos_worlds#97) re-bases the patched view on upstream 26.09. The fix was deployed at 00:43 UTC on 2026-10-02 and confirmed by production page views returning 200 at 00:54.
 
 ---
 
@@ -32,7 +32,7 @@ A Dependabot bump of the BookStack base image (26.05.5 → 26.09) was auto-merge
 | 2026-10-02 ~00:39 | lucas42/lucos_worlds#97 opened and approved by lucos-code-reviewer |
 | 2026-10-02 00:40 | lucas42/lucos_worlds#97 merged |
 | 2026-10-02 00:43 | `lucos_worlds_web` 1.2.31 starts. Deployed `show.blade.php` confirmed byte-identical (sha256) to the tested file; no laravel errors after 00:32:38 |
-| TBD | First production page view after the fix returns 200 — TBD pending lucas42's next page view. Incident resolved |
+| 2026-10-02 00:54 | First production page views after the fix (`/books/kaidoho/page/monster-template`, `/books/kaidoho/page/session-0`) return 200, with no new laravel errors. Incident resolved |
 
 ---
 
