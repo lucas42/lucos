@@ -62,9 +62,15 @@ The base-image bump went through Dependabot auto-merge without a human looking a
 
 CI did run against the real patched image on lucas42/lucos_worlds#95. All four test jobs (`test-info-endpoint`, `test-oidc-alg-binding`, `test-oidc-es256`, `test-page-excerpt`) passed before the auto-merge, so the failure was coverage, not absence.
 
-A whole-file patch has two surfaces: our hunk, and the frozen remainder of upstream's file. `test-page-excerpt` unit-tests our hunk (`Page::getExcerpt()`) and never renders `show.blade.php`. The Dockerfile comment saying that test stops a Dependabot bump from "silently regress[ing]" this was true of the hunk and false of the remainder. No job requested a page.
+A whole-file patch can break in three places:
 
-That is the argument for the upstream-hash guard (lucas42/lucos_worlds#98) as the primary defence. It covers the remainder of *every* patched file, whatever any one test happens to exercise. lucas42/lucos_worlds ADR-0002 currently names integration tests as "the sole defence (lucas42's mandate)" against upgrade breakage, so the guard adds a second defence alongside his decision and needs his agreement. A CI render smoke test (lucas42/lucos_worlds#99) complements it by catching wrongly re-applied hunks and upstream changes to files we don't patch.
+1. **Our hunk.** The existing tests cover this: `test-page-excerpt` unit-tests `Page::getExcerpt()`.
+2. **The rest of upstream's file**, frozen when we copied it. Only an upstream-hash guard (lucas42/lucos_worlds#98) covers this.
+3. **Unpatched upstream code our frozen copy depends on**, here the controller that stopped passing `$pageNav`. Only a render test (lucas42/lucos_worlds#99) catches this.
+
+This incident hit both 2 and 3. The Dockerfile comment saying `test-page-excerpt` stops a Dependabot bump from "silently regress[ing]" this was true only of 1. No job requested a page.
+
+So lucas42/lucos_worlds#98 and lucas42/lucos_worlds#99 are complementary, not alternatives. The guard covers the remainder of *every* patched file, whatever any one test happens to exercise. lucas42/lucos_worlds ADR-0002 currently names integration tests as "the sole defence (lucas42's mandate)" against upgrade breakage, so the guard adds a second defence alongside his decision and needs his agreement.
 
 ### Contributing factor: other patches drifted too
 
@@ -92,9 +98,9 @@ The other two OIDC patch targets (`OidcProviderSettings.php`, `OidcJwtSigningKey
 | Action | Issue / PR | Status |
 |---|---|---|
 | Re-base patched `show.blade.php` on BookStack v26.09 | lucas42/lucos_worlds#97 | Done |
-| Build-time upstream-hash guard on all whole-file patches, plus re-basing the drifted patches (OIDC first). Needs lucas42's agreement, since it adds a second defence alongside ADR-0002's tests-only mandate. lucos-architect will then write a lucos_worlds ADR for the patch-carrying policy | lucas42/lucos_worlds#98 | Open (awaiting lucas42) |
+| Build-time upstream-hash guard on all whole-file patches, plus re-basing the drifted patches (OIDC first). Needs lucas42's agreement, since it adds a second defence alongside ADR-0002's tests-only mandate. lucos-architect will then write a lucos_worlds ADR for the patch-carrying policy | lucas42/lucos_worlds#98 | Awaiting Decision (lucas42) |
 | Estate convention for runtime breakage that CI and `/_info` both miss (this incident is a fifth data point) | lucas42/lucos#273 | Open |
-| CI render smoke test: build the image, create a page, GET it, assert 200 | lucas42/lucos_worlds#99 | Open |
+| CI render smoke test: build the image, create a page, GET it, assert 200. A per-repo instance of what lucas42/lucos#273 is deciding estate-wide | lucas42/lucos_worlds#99 | Ready (lucos-developer) |
 
 ---
 
