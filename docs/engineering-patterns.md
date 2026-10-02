@@ -285,6 +285,8 @@ All secrets and environment-varying configuration are managed by `lucos_creds`. 
 scp -P 2202 "creds.l42.eu:${PWD##*/}/development/.env"  .
 ```
 
+CI fetches every project's build and deploy credentials from `creds.l42.eu` too, so **while `lucos_creds` is down, nothing else in the estate can build or deploy**. It is restored first. See [the lucos_creds runbook](runbooks/update-lucos-creds-production.md#if-credsl42eu-is-down-nothing-else-in-the-estate-can-build-or-deploy).
+
 ### What goes where
 
 | Where | What | Examples |
