@@ -1,8 +1,9 @@
-# Runbook: Updating a production credential in lucos_creds itself
+# Runbook: lucos_creds itself — updating its production credentials, and recovering when it is down
 
-> **⚠️ This runbook applies only when you are updating a credential whose system is `lucos_creds` and whose environment is `production`.**
->
-> For all other systems, the normal `ssh -p 2202 creds.l42.eu …` command is sufficient. Stop here if you are updating credentials for any other system.
+This runbook covers the two situations where `lucos_creds` cannot be treated like any other system:
+
+1. **[Updating a production credential whose system is `lucos_creds`](#why-lucos_creds-is-a-special-case).** For any other system, the normal `ssh -p 2202 creds.l42.eu …` command is sufficient.
+2. **[`creds.l42.eu` is down](#if-credsl42eu-is-down-nothing-else-in-the-estate-can-build-or-deploy)** (for example, avalon is unavailable). No other project in the estate can build or deploy until `lucos_creds` is back, so it is restored first.
 
 ---
 
@@ -116,6 +117,60 @@ The most likely cause is that `LUCOS_DEPLOY_ENV_BASE64` was not updated (or was 
 
 ---
 
+## If creds.l42.eu is down: nothing else in the estate can build or deploy
+
+`lucos_creds` runs on avalon. Every project's CircleCI pipeline fetches credentials from `creds.l42.eu` (via `lucas42/lucos_deploy_orb`), so while it is down:
+
+- **Builds fail.** The orb's `build` job always runs `fetch-publish-creds`, which scps `lucos_deploy_orb/publish/.env` from `creds.l42.eu`. There is no bypass.
+- **Deploys fail.** The orb's `deploy` command scps the project's `production/.env` from `creds.l42.eu`, unless the project has a `LUCOS_DEPLOY_ENV_BASE64` CircleCI variable. Only `lucos_creds` has one.
+
+This is deliberate. Other projects do not get their own copy of their credentials (in a CircleCI variable, a context, or a standby endpoint), because several sources for the same secrets drift apart and make credential management harder. `lucos_creds` carries a bypass only to solve its own bootstrap problem (lucas42/lucos#299).
+
+**The rule: if `lucos_creds` is down, fix it first, before deploying anything else.**
+
+### 1. Deploy lucos_creds by rerunning a previous pipeline
+
+A fresh `lucos_creds` build cannot run, because the build step needs `creds.l42.eu`. Its deploy can, because of its `LUCOS_DEPLOY_ENV_BASE64` bypass. So redeploy an **already-published image** by rerunning only the deploy job of an earlier, successful pipeline. Nothing is built, so the build's credential fetch never runs.
+
+1. Find `lucos_creds`'s **most recent** pipeline on `main` where both the build and the deploy succeeded. Check this. A pipeline that failed is not a usable rerun target, even if it is more recent.
+2. Rerun just its deploy job, using CircleCI's selective job-rerun API (this is what worked during the 2026-09-15 rebuild):
+
+   ```bash
+   # WORKFLOW_ID: the workflow of the pipeline chosen in step 1
+   # DEPLOY_JOB_ID: that workflow's deploy job (e.g. lucos/deploy-avalon), from GET /workflow/$WORKFLOW_ID/job
+   curl -X POST \
+     -H "Circle-Token: TOKEN" \
+     -H "Content-Type: application/json" \
+     -d "{\"jobs\": [\"$DEPLOY_JOB_ID\"]}" \
+     "https://circleci.com/api/v2/workflow/$WORKFLOW_ID/rerun"
+   ```
+
+   **What gets deployed:** the orb's deploy picks its version from the repo's newest `v*` git tag (`git fetch --tags`), not from the rerun pipeline's own commit. So a rerun deploys the **latest released image**, with the `docker-compose.yml` from the rerun pipeline's checkout. Choosing the most recent successful pipeline keeps those two in step. A rerun of an older pipeline can pair an old compose file with a newer image.
+3. Expect the workflow to show as **failed** even when the deploy worked. While avalon's other services are down, the final "Send deploy log to loganne" step fails, because loganne is on avalon too. The "Fetch deploy infrastructure credentials" step warns and carries on, skipping monitoring suppression. Check the deploy itself, not the workflow's colour: the "Deploy using docker compose" step must pass, and `https://creds.l42.eu/_info` must answer. Once loganne is back, you can rerun the workflow from failed to get a green record. That redeploys `lucos_creds` again, which is harmless once its store has been restored (step 2).
+4. Check that the `LUCOS_DEPLOY_ENV_BASE64` snapshot is current. The deploy writes `.env` from it, so a stale snapshot brings `lucos_creds` up with stale credentials of its own. See the first half of this runbook.
+
+### 2. Restore lucos_creds's data before anything else deploys
+
+If the host was rebuilt, `lucos_creds` first boots with an **empty store** and freshly generated keys, until its `lucos_creds_store` volume is restored from backup (see `lucas42/lucos_backups`'s `docs/restore-runbook.md`). During that window, any other project's deploy would get missing or wrong credentials. So:
+
+- restore the store immediately after `lucos_creds`'s first boot;
+- don't let any other deploy run until the restore is done and verified. Hold off merges, and don't rerun other pipelines.
+
+### 3. Then everything else
+
+Once `lucos_creds` is up with its real data, deploys work again for every project. Restore the rest in the usual priority order (e.g. `lucos_configy`, then `lucos_dns`, `lucos_router`, `lucos_firewall`, then the rest).
+
+**Fresh builds may still fail while avalon is only partly back.** `lucos_docker_mirror` is also on avalon, and a known orb defect (lucas42/lucos_deploy_orb#188) makes a build hard-fail against an unreachable mirror instead of falling back to Docker Hub. Until the mirror is up (or that defect is fixed), use the same technique as step 1: rerun only the deploy job of a previous successful pipeline, which skips the build.
+
+### Don't
+
+- **Don't deploy another project before `lucos_creds` by giving it a temporary `LUCOS_DEPLOY_ENV_BASE64`.** This was done once during the 2026-09-15 avalon rebuild, with a placeholder non-secret envfile for `lucos_root`, removed straight afterwards, purely to test the pipeline (lucas42/lucos#296). It is not the recovery procedure. The service gets credentials that aren't its real ones, and it creates exactly the second source of credentials this design avoids.
+- **Don't add bypasses to other projects** to make the next outage easier. See the reasoning above.
+
+Reference: the 2026-09-14 avalon disk failure, where this was the restore order ([incident report](../incidents/2026-09-14-avalon-disk-failure.md), section "Rebuild: nothing in the estate can build or deploy while `creds.l42.eu` is down").
+
+---
+
 ## Cleanup
 
 Remove the temporary file when done:
@@ -131,3 +186,4 @@ rm /tmp/lucos_creds_production.env
 - [lucos_creds README — Setting or updating a credential](https://github.com/lucas42/lucos_creds#setting-or-updating-a-credential)
 - [lucos_creds#304](https://github.com/lucas42/lucos_creds/issues/304) — issue tracking the discoverability gap this runbook addresses
 - [lucos_creds#152](https://github.com/lucas42/lucos_creds/issues/152) — original self-deploy mechanism implementation
+- [lucos#299](https://github.com/lucas42/lucos/issues/299) — decision that, when `creds.l42.eu` is down, `lucos_creds` is restored first and no other project gets its own credential copy
