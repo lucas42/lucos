@@ -6,7 +6,8 @@
 | **Duration** | TBD (21:23 UTC to TBD) |
 | **Severity** | Complete outage |
 | **Services affected** | lucos_campaigns (campaigns.l42.eu) |
-| **Detected by** | Monitoring alerts at 21:30/21:33 UTC; acted on at 23:39 UTC during an SRE ops check |
+| **Tracking issue** | lucas42/lucos_campaigns#66 |
+| **Detected by** | Monitoring alerts at 21:30/21:33 UTC; picked up at ~23:39 UTC by the sysadmin and SRE ops checks independently |
 
 ---
 
@@ -27,6 +28,7 @@ A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged i
 | 21:30 | Monitoring alert: `lucos_docker_health` avalon, crash-looping `lucos_campaigns_app`, `lucos_campaigns_search` |
 | 21:33 | Monitoring alert: `lucos_campaigns` `fetch-info` (timeout) and `circleci` |
 | 23:39 | SRE ops check picks up both alerts. Logs give the cause directly |
+| 23:40 | lucos-system-administrator's ops check independently files lucas42/lucos_campaigns#66 |
 | 23:40 | Fix reproduced locally: index created on v1.54.1 opens on the pinned v1.54.3 digest with `MEILI_UPGRADE_DB=true`, data intact |
 | ~23:41 | Hotfix lucas42/lucos_campaigns#67 opened |
 | TBD | #67 merged and deployed |
@@ -66,7 +68,7 @@ Nothing. A container restart was considered and rejected without being tried: th
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search | lucas42/lucos_campaigns#67 | TBD |
+| Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search (closes lucas42/lucos_campaigns#66) | lucas42/lucos_campaigns#67 | TBD |
 
 No further follow-ups proposed, deliberately:
 
