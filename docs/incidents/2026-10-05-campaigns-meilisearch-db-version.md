@@ -72,14 +72,17 @@ Nothing. A container restart was considered and rejected without being tried: th
 | Action | Issue / PR | Status |
 |---|---|---|
 | Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search (closes lucas42/lucos_campaigns#66) | lucas42/lucos_campaigns#67 | Done |
+| Add this incident as evidence to the runtime-breakage convention decision | lucas42/lucos#273 | Done (comment); ticket Open |
 
 We chose not to propose further follow-ups:
 
-- **CI test against a previous-version volume.** This would catch the class at build time, but the fix already makes this specific class a non-event for Meilisearch. A general "upgrade from previous image" test would need per-stateful-image fixtures across the estate, which is a large maintenance cost for an outage mode we have now hit once.
-- **Deploy rollback in the `lucos/deploy` orb.** Rollback would have shortened this outage. It was already proposed and built after the 2026-08-17 lucos_backups outage (lucas42/lucos_deploy_orb#192, PR lucas42/lucos_deploy_orb#194), and lucas42 rejected it on 2026-08-28 as too much complexity for a relatively rare event. That's a standing decision, and one more instance doesn't change its balance.
+- **CI test against a previous-version volume.** This would catch the class at build time, but the fix already covers routine forward upgrades for Meilisearch. It doesn't make them risk-free: Meilisearch documents dumpless upgrade as supported only from v1.12 onwards, and as able to corrupt the database occasionally. The recovery for that is cheap: remove the `lucos_campaigns_search_data` volume and restart, and the app's start-up import (`Meilisearch import started` in its logs) re-indexes from MariaDB. A general "upgrade from previous image" test would need per-stateful-image fixtures across the estate, which is a large maintenance cost for an outage mode we have now hit once.
+- **Deploy rollback in the `lucos/deploy` orb.** Rollback would have shortened this outage. It was already proposed and built after the 2026-08-17 lucos_backups outage (lucas42/lucos_deploy_orb#192, PR lucas42/lucos_deploy_orb#194), and lucas42 rejected it on 2026-08-28 as too much complexity for a relatively rare event. That's a standing decision, and one more instance doesn't change its balance. It also wouldn't have been safe here (lucos-architect): once Meilisearch upgrades the database on start, rolling the image back would most likely hit the reverse version mismatch. The same goes for any engine whose on-disk format follows its version, so image rollback is only reliably safe for stateless containers.
 - **Auditing other stateful images.** Other version-pinned images that own data volumes, such as Postgres, MariaDB, Typesense and Fuseki, may have similar on-disk version checks. Postgres is known to refuse a data directory from a different *major* version. None of these has been verified, and no audit is proposed on the strength of one Meilisearch incident.
 
-Domain review: security, system-administrator and UX reviewed the draft. Their points are folded in above; none raised a follow-up.
+This incident was added as a data point to lucas42/lucos#273 (the open convention decision on runtime breakage that CI and `/_info` miss). It extends that ticket's base-image cases to *existing volume state*, rather than opening a new ticket.
+
+Domain review: architect, security, system-administrator and UX reviewed the draft. Their points are folded in above; none raised a new ticket.
 
 ---
 
