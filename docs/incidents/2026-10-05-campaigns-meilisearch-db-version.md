@@ -13,7 +13,7 @@
 
 ## Summary
 
-A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged into lucos_campaigns. On deploy, the search container refused to open its existing on-disk index ("database version incompatible") and crash-looped. The Kanka app container crash-looped behind it, because its start-up search import couldn't reach the search host. campaigns.l42.eu was down until a one-line config change (`MEILI_UPGRADE_DB=true`) let Meilisearch migrate the index in place. Service was restored at 23:53 UTC, after about 2½ hours.
+A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged into lucos_campaigns. On deploy, the search container refused to open its existing on-disk index ("database version incompatible") and crash-looped. The Kanka app container crash-looped behind it, because its start-up search import couldn't reach the search host. For users, campaigns.l42.eu stopped responding: monitoring's `/_info` probe timed out, and a request to `/` from an agent sandbox timed out after 15s. Nobody captured what a browser showed. It was down until a one-line config change (`MEILI_UPGRADE_DB=true`) let Meilisearch migrate the index in place. Service was restored at 23:53 UTC, after about 2½ hours.
 
 ---
 
@@ -45,7 +45,7 @@ A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged i
 
 Meilisearch stamps its on-disk database with the engine version that wrote it. Unless told to upgrade, it refuses to start when the stamp doesn't match the running engine, even for a patch release. The compose file pinned the image by version and digest but didn't set `MEILI_UPGRADE_DB`. So any Meilisearch bump that reached production was guaranteed to take search down, and the app with it.
 
-The fix sets `MEILI_UPGRADE_DB=true`, so Meilisearch migrates the index in place on start-up. This is safe here because the index volume is `recreate_effort: automatic` / `skip_backup: true` in configy: it is rebuilt from MariaDB, so a migration that went wrong would cost a re-index, not data.
+The fix sets `MEILI_UPGRADE_DB=true`, so Meilisearch migrates the index in place on start-up. This is safe here **only because** the index volume is `recreate_effort: automatic` / `skip_backup: true` in configy: its description says it is rebuilt from MariaDB with `artisan setup:meilisearch`, so a migration that went wrong would cost a re-index, not data. If the index ever stops being rebuildable, the flag turns every upstream bump into an unattended, one-way migration of data that isn't backed up. At that point the flag should be revisited.
 
 ### CI could not catch it
 
@@ -73,12 +73,13 @@ Nothing. A container restart was considered and rejected without being tried: th
 |---|---|---|
 | Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search (closes lucas42/lucos_campaigns#66) | lucas42/lucos_campaigns#67 | Done |
 
-No further follow-ups proposed, deliberately:
+We chose not to propose further follow-ups:
 
 - **CI test against a previous-version volume.** This would catch the class at build time, but the fix already makes this specific class a non-event for Meilisearch. A general "upgrade from previous image" test would need per-stateful-image fixtures across the estate, which is a large maintenance cost for an outage mode we have now hit once.
-- **Deploy rollback in the `lucos/deploy` orb.** Rollback would have shortened this outage, but it's an orb-wide design change, and this incident alone doesn't justify it.
+- **Deploy rollback in the `lucos/deploy` orb.** Rollback would have shortened this outage. It was already proposed and built after the 2026-08-17 lucos_backups outage (lucas42/lucos_deploy_orb#192, PR lucas42/lucos_deploy_orb#194), and lucas42 rejected it on 2026-08-28 as too much complexity for a relatively rare event. That's a standing decision, and one more instance doesn't change its balance.
+- **Auditing other stateful images.** Other version-pinned images that own data volumes, such as Postgres, MariaDB, Typesense and Fuseki, may have similar on-disk version checks. Postgres is known to refuse a data directory from a different *major* version. None of these has been verified, and no audit is proposed on the strength of one Meilisearch incident.
 
-TBD: fold in team responses.
+Domain review: security, system-administrator and UX reviewed the draft. Their points are folded in above; none raised a follow-up.
 
 ---
 
