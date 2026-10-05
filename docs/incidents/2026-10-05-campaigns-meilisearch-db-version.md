@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-10-05 |
-| **Duration** | TBD (21:23 UTC to TBD) |
+| **Duration** | ~2h30m (21:23 UTC to 23:53 UTC) |
 | **Severity** | Complete outage |
 | **Services affected** | lucos_campaigns (campaigns.l42.eu) |
 | **Tracking issue** | lucas42/lucos_campaigns#66 |
@@ -13,7 +13,7 @@
 
 ## Summary
 
-A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged into lucos_campaigns. On deploy, the search container refused to open its existing on-disk index ("database version incompatible") and crash-looped. The Kanka app container crash-looped behind it, because its start-up search import couldn't reach the search host. campaigns.l42.eu was down until a one-line config change (`MEILI_UPGRADE_DB=true`) let Meilisearch migrate the index in place. TBD: restoration time.
+A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged into lucos_campaigns. On deploy, the search container refused to open its existing on-disk index ("database version incompatible") and crash-looped. The Kanka app container crash-looped behind it, because its start-up search import couldn't reach the search host. campaigns.l42.eu was down until a one-line config change (`MEILI_UPGRADE_DB=true`) let Meilisearch migrate the index in place. Service was restored at 23:53 UTC, after about 2½ hours.
 
 ---
 
@@ -31,8 +31,11 @@ A Dependabot patch bump of Meilisearch from v1.54.1 to v1.54.3 was auto-merged i
 | 23:40 | lucos-system-administrator's ops check independently files lucas42/lucos_campaigns#66 |
 | 23:40 | Fix reproduced locally: index created on v1.54.1 opens on the pinned v1.54.3 digest with `MEILI_UPGRADE_DB=true`, data intact |
 | ~23:41 | Hotfix lucas42/lucos_campaigns#67 opened |
-| TBD | #67 merged and deployed |
-| TBD | Search and app healthy, `/_info` green, monitoring clear |
+| 23:47:55 | lucas42/lucos_campaigns#67 merged (closes lucas42/lucos_campaigns#66) |
+| 23:53:03 | New search container starts with the flag set and logs `Task queue upgraded`. Index intact: 833 documents |
+| 23:53:24 | lucos_campaigns v1.0.39 deployed; search and app both `healthy`, restart count 0 |
+| 23:53:37 | Monitoring recovery: `lucos_docker_health` |
+| 23:54:21 | Monitoring recovery: `lucos_campaigns`. Estate 56/56 healthy. Verified by hand: `/_info` 200 with every check ok, a live search query against the `entities` index returns hits, and no Laravel `production.ERROR` since the new search container started |
 
 ---
 
@@ -68,7 +71,7 @@ Nothing. A container restart was considered and rejected without being tried: th
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search (closes lucas42/lucos_campaigns#66) | lucas42/lucos_campaigns#67 | TBD |
+| Set `MEILI_UPGRADE_DB=true` on lucos_campaigns_search (closes lucas42/lucos_campaigns#66) | lucas42/lucos_campaigns#67 | Done |
 
 No further follow-ups proposed, deliberately:
 
