@@ -96,7 +96,7 @@ Considered and not filed:
 | Action | Issue / PR | Status |
 |---|---|---|
 | Retry failed track fetches until they succeed, with backoff, and report a "retrying" state to monitoring. lucos-architect has recommended that a fetch which queues zero tracks also counts as a failed attempt | lucas42/lucos_media_manager#302 | Open (fix agreed 2026-09-29, not yet implemented) |
-| Put a timeout on media API response bodies. A body that stalls after its headers would hang the fetcher while `/_info` stays green (latent; not what happened here) | lucas42/lucos_media_manager#305 | Open |
+| Put a timeout on media API response bodies. A body that stalls after its headers would hang the fetcher while `/_info` stays green (latent; not what happened here, reproduced on JDK 25.0.4). Supersedes lucas42/lucos_media_manager#305, which proposed a fix that also hangs | lucas42/lucos_media_manager#306 | Open |
 | Durable container logs, so restarts don't erase incident evidence | lucas42/lucos#214 | Open (evidence added) |
 | Decide whether to close the gap between a service alert and a human response (paging, re-notification, agent first response, or accept and rely on self-healing fixes). The decision is lucas42's | lucas42/lucos#322 | Open, awaiting lucas42's decision |
 | lucos_scenes sends no `User-Agent` to ceol (ADR-0001), found while investigating this incident | lucas42/lucos#251 (remediation batch) | Open |
