@@ -65,7 +65,9 @@ That makes the trigger matter much less, with one caveat. If the fetch threw an 
 
 ### Detection: the alert fired and nobody acted on it
 
-Monitoring alerted within two minutes and stayed red for the whole outage. Nobody responded until an ops check the next evening. That is the alert-to-action gap already settled on lucas42/lucos#290, so this report doesn't propose anything new for it.
+Monitoring alerted within two minutes and stayed red for the whole outage. Both alert emails were accepted by Google's mail servers at 07:56:21 (lucos_mail_smtp log, `status=sent`). That's acceptance by the relay; inbox delivery wasn't checked. Nobody responded until an ops check the next evening.
+
+**This gap between a service alert and a human response is known, but nothing currently tracks it.** lucas42/lucos#290 dealt with red CI pipelines. It explicitly left "alerted correctly, nobody acts" out of scope, and it closed on 2026-10-07 with only its narrower Dependabot-threshold remedy shipped. A service-level instance from the 2026-09-14 avalon disk failure was recorded on #290 as evidence before it closed, but the ticket never addressed that shape. See "Considered and not filed" under Follow-up Actions.
 
 What recovered the queue at 10:08:27 is unknown. The lucos_scenes log has no action between 07:54:18 and 10:15, and the router and media_manager logs that would show which client it was are gone. It wasn't a switch to a different collection, because Loganne has no `collectionSwitch` between 07:54:36 and 21:26. It wasn't a same-slug switch either, because that returns `204 Not Changed` without fetching. The set of possible triggers is wider than #302's body suggests (lucos-architect). `removeTrackByUuid()` (behind the complete, skip-by-uuid and error POSTs), `skipTrack()` and `deleteTrackById()` all call `topupTracks()` unconditionally. They do it even when the queue is empty or the uuid isn't in it. So any of those requests from a player, even for a stale track, or a track-deletion notification from the media API, would have refilled the queue. Which of these it was is **unknown**.
 
@@ -88,6 +90,7 @@ Two routine restarts cleared the logs for the incident window: the router at 202
 
 Considered and not filed:
 
+- **Shortening the time between a service alert and a human response.** The alert was delivered, so detection worked. The person it went to is also the person whose wake-up music didn't play. How quickly anyone acts on an alert is a decision for lucas42 about how he wants to be notified. It isn't an engineering fix. The engineering response to this incident is to make the failure recover by itself (lucas42/lucos_media_manager#302), so that nobody needs to respond. Because nothing tracks this gap since #290 closed, I've flagged it to the coordinator to decide whether to put it to lucas42. Revisit trigger: another service alert that goes unanswered for more than 2h, on an outage that needed a human to end it.
 - **A host metrics recorder on avalon (sysstat)**, suggested by lucos-system-administrator. It would have answered the question of what stalled media_manager, here and on 09-29. But the answer wouldn't change the fix, which works whatever caused the stall. The trigger for revisiting this is a third unexplained stall on avalon that is *not* covered by an existing fix.
 - **An explicit empty-queue or failed-fetch state in the player UI, and a failure signal from the wake-up scene**, suggested by lucos-ux. For a wake-up scene the person is asleep, so a UI state wouldn't have helped. Once #302 lands, an empty queue retries by itself instead of persisting. Revisit if the `empty-queue` alert stays red for more than 10 minutes again, whether or not #302 has shipped by then.
 
