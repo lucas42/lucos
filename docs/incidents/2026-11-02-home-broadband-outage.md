@@ -16,7 +16,7 @@ lucas42's home broadband was hard down for about 33 hours. Every lucos host at h
 
 1. **A hard-down network produced hourly *flapping* alerts on two avalon services.** `lucos_backups` and `lucos_docker_health` each went red and recovered every hour. The hourly cycle accounts for 116 of the 137 alerts those two systems sent during the outage. The cause was `lucos_backups`' single-threaded web server, which blocked for about 7 minutes every hour waiting on SSH SYN timeouts to the unreachable hosts (lucas42/lucos_backups#374).
 2. **No backup left avalon for about 47.5 hours.** Every off-avalon backup destination (aurora, xwing, salvare) is at home. When the first post-outage run did reach the home hosts, a separate bug meant repository archives skipped xwing (lucas42/lucos_backups#460).
-3. **IPv6 didn't come back when the ISP restored service.** The home router advertised no IPv6 prefix, so salvare, which avalon reaches over IPv6, stayed unreachable for another ~13.5 hours until lucas42 restarted the router (lucas42/lucos#331).
+3. **IPv6 didn't come back when the ISP restored service.** The home router advertised no IPv6 prefix, so salvare, which avalon reaches over IPv6, stayed unreachable for another ~13.5 hours. IPv6 came back within two minutes of lucas42 restarting the router (lucas42/lucos#331).
 
 ---
 
@@ -118,7 +118,7 @@ Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA rec
 ## What Was Tried That Didn't Work
 
 - **`sysctl -w net.ipv6.conf.eth0.accept_ra=2`** (proposed in the first version of lucas42/lucos#331, never run). `accept_ra` = 0 appears to be NetworkManager's normal arrangement on these hosts, not a fault. The real fault was upstream, at the router.
-- **"Salvare is IPv6-only, so it is completely unreachable"** (the first version of lucas42/lucos#331). It was reachable over IPv4 on `salvare-v4.s.l42.eu:2202` the whole time. Only the IPv6 name that `lucos_backups` uses was unreachable.
+- **"Salvare is IPv6-only, so it is completely unreachable"** (the first version of lucas42/lucos#331). Once the ISP was back, it was reachable over IPv4 on `salvare-v4.s.l42.eu:2202`. Only the IPv6 name that `lucos_backups` uses was unreachable.
 - **Using the 11:07 refresh on 11-03 as the test that fast failures no longer block the server.** That refresh was rejected by the cooldown (429), so it didn't exercise the blocking path. The conclusion was instead verified from the 10–15s duration of every in-process tracking run after recovery, which use the same code path.
 
 ---
@@ -134,7 +134,7 @@ Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA rec
 | *Related, existing:* the outage made lucos_agent's scheduled `prune-images` fail and nothing alerted, because monitoring's `circleci` check ignores `scripts.yaml` repos | lucas42/lucos_monitoring#321 | Open |
 | *Related, existing:* coalesce alerts that share a cause. The 137 alerts are the class this addresses; lucas42/lucos_backups#374 removes this particular trigger. | lucas42/lucos_monitoring#302 | Open |
 | *Considered and not filed:* an SSH/scp connect timeout in `lucos_backups`. For tracking, it prevents no alert once lucas42/lucos_backups#374 lands. For `create-backups`, it would shorten a run like the inferred 12–16h one above, but with every destination unreachable that run and the slot it swallowed would both have failed anyway, so no copy would have been saved. | n/a | Not filed |
-| *Considered and not filed:* anything about redundancy or availability for xwing/salvare, including detecting or automating recovery when the router fails to re-acquire its IPv6 prefix (the second occurrence, after 2026-04-19). | n/a | Out of scope by lucas42's decision (in chat, relayed by team-lead, 2026-11-03) |
+| *Considered and not filed:* anything about redundancy or availability for xwing/salvare, including detecting or automating recovery when the router fails to restore IPv6 after an outage (a similar failure happened on 2026-04-19). | n/a | Out of scope by lucas42's decision (in chat, relayed by team-lead, 2026-11-03) |
 | *Open question for lucas42:* is backup **failure-domain diversity** for avalon's data covered by that exclusion? All three off-avalon destinations share one failure domain, the home broadband, so this outage behaved like the loss of the only off-site copy. That's a property of the backup design, not of xwing/salvare as hosts. (Raised by lucos-architect.) | TBD | Asked via team-lead |
 
 ---
