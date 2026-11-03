@@ -39,9 +39,9 @@ lucas42's home broadband was hard down for about 33 hours. Every lucos host at h
 | 2026-11-03 15:25 | `create-backups` runs. Every volume and one-off file is archived and copied to aurora and xwing, the first off-avalon copies since 11-01 15:58. Copies to salvare fail. Repository archives reach avalon only: 98 to avalon, 98 failed to salvare, 0 to xwing. aurora never takes repository archives, by design (lucas42/lucos_backups#460). |
 | 2026-11-03 22:50–22:53 | While investigating that run, lucos-site-reliability reads `/var/log/cron.log` inside the container, not knowing it is a FIFO, and briefly competes with its drain. No cron output is written in that window, so nothing is believed lost (lucas42/lucos_backups#461). |
 | 2026-11-03 23:37 | lucos-system-administrator root-causes the IPv6 loss: the home router is sending router advertisements with **no prefix and a router lifetime of 0**. |
-| 2026-11-03 ~23:40 | lucas42 restarts the home router. |
+| 2026-11-03 ~23:40 | lucas42 restarts the home router (time from his message, relayed by team-lead). |
 | 2026-11-03 23:42 | IPv6 is back on xwing and salvare, with the same prefix and the same public IPv4, so no DNS or `hosts.yaml` changes are needed. |
-| 2026-11-03 23:43 | `lucos_backups` tracking reaches salvare again (`host-count` 4, `host-tracking-failures` green). |
+| 2026-11-03 23:43 | `lucos_backups` tracking reaches salvare again. Source: the in-process run finished at 23:43:22 with no salvare error; monitoring's 23:43:39 alert no longer lists `host-tracking-failures`; `/_info` at 23:46 shows `host-count` 4 and the check ok. |
 | 2026-11-04 03:25 | Next `create-backups` run, expected to clear the check and copy to salvare. **TBD: pending result.** |
 | 2026-11-04 04:49 | Next `prune-backups` run, expected to clear the check. **TBD: pending result.** |
 
@@ -96,13 +96,18 @@ The *outcome* wasn't changed by it: with every destination unreachable, the 03:2
 
 ### IPv6 didn't come back with the ISP
 
-When the ISP restored service at 10:11, IPv4 came back but IPv6 didn't. lucos-system-administrator found (lucas42/lucos#331) that the home router was sending router advertisements with no prefix and a router lifetime of 0. It had not re-acquired its IPv6 prefix delegation from the ISP, so the hosts had nothing to build a global address from. Two early leads were red herrings:
-- `accept_ra` reading 0 on both hosts. NetworkManager handles router advertisements itself on these hosts.
+When the ISP restored service at 10:11, IPv4 came back but IPv6 didn't. lucos-system-administrator found (lucas42/lucos#331) that the home router was sending router advertisements with no prefix and a router lifetime of 0. That is consistent with the router not having re-acquired its IPv6 prefix delegation from the ISP (the sysadmin's best reading; nobody can see inside the router, so it's not confirmed). Either way, the hosts had nothing to build a global address from. Two early leads were red herrings:
+- `accept_ra` reading 0 on both hosts. NetworkManager appears to handle router advertisements itself on these hosts: it held the router's DNS entry while the kernel's `accept_ra` read 0. Nobody has read NM's source or logs to confirm this.
 - salvare's `eth0` being down. It has had no carrier since boot on 2026-09-27; salvare runs on `wlan0`.
 
-A router restart at about 23:40 restored the same prefix within two minutes. The same failure, the router losing its prefix-delegation state, happened on 2026-04-19 and was fixed the same way (from lucos-system-administrator's notes).
+lucas42 restarted the router at about 23:40 (time from his message, relayed by team-lead). By 23:42 both hosts had the same prefix and a default route again. The restart is the likely cause, but self-recovery can't be ruled out from what was observed. One supporting fact: an agent sandbox whose traffic leaves through the home connection had requests reach avalon at 23:40:35 and 23:42:45 but lost one in between, which fits a router restart in that window. A similar failure happened on 2026-04-19 (from lucos-system-administrator's notes): the router stopped sending router advertisements entirely, so the old prefix aged out. That's a different symptom with the same suspected cause (the router losing its prefix delegation), and the same remedy (a router restart).
 
-Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA record, salvare stayed unreachable for backups and tracking for ~13.5 hours after the ISP outage itself had ended. It *was* reachable over IPv4 throughout, at `salvare-v4.s.l42.eu` through a router port forward, but nothing in the estate uses that path for backups.
+Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA record, salvare stayed unreachable for backups and tracking for ~13.5 hours after the ISP outage itself had ended. Once the ISP was back, it *was* reachable over IPv4 at `salvare-v4.s.l42.eu` through a router port forward (one SSH keyscan by the sysadmin, between the ISP's return and the router restart). Nothing in the estate uses that path for backups.
+
+### Other side-effects
+
+- **lucos_agent's `prune-images` failed silently.** lucos_agent's scheduled `prune-images` job failed for xwing and salvare at 03:02 on both 11-02 and 11-03, at the `ssh-keyscan` step. The outage window fits; lucos-system-administrator spotted it but couldn't confirm the cause from the step output, which was empty. It is expected to clear at the next scheduled run, 03:02 on 11-04. **TBD: pending result.** Nothing alerted, because monitoring's `circleci` check ignores repos listed only in `scripts.yaml` (lucas42/lucos_monitoring#321, existing).
+- **Not related, but it overlaps in time:** at about 23:35 on 11-02, mid-outage, the `circleci` check went red on 52 of 56 systems. That's a separate failure: lucos_monitoring had no CircleCI token, and the CircleCI API stopped serving the unauthenticated requests it had been making (lucas42/lucos_monitoring#320). Anyone scanning alert history for this period should not link the two.
 
 ### A side-effect of the investigation: the cron.log FIFO
 
@@ -112,7 +117,7 @@ Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA rec
 
 ## What Was Tried That Didn't Work
 
-- **`sysctl -w net.ipv6.conf.eth0.accept_ra=2`** (proposed in the first version of lucas42/lucos#331, never run). `accept_ra` = 0 is NetworkManager's normal arrangement on these hosts, not a fault. The real fault was upstream, at the router.
+- **`sysctl -w net.ipv6.conf.eth0.accept_ra=2`** (proposed in the first version of lucas42/lucos#331, never run). `accept_ra` = 0 appears to be NetworkManager's normal arrangement on these hosts, not a fault. The real fault was upstream, at the router.
 - **"Salvare is IPv6-only, so it is completely unreachable"** (the first version of lucas42/lucos#331). It was reachable over IPv4 on `salvare-v4.s.l42.eu:2202` the whole time. Only the IPv6 name that `lucos_backups` uses was unreachable.
 - **Using the 11:07 refresh on 11-03 as the test that fast failures no longer block the server.** That refresh was rejected by the cooldown (429), so it didn't exercise the blocking path. The conclusion was instead verified from the 10–15s duration of every in-process tracking run after recovery, which use the same code path.
 
@@ -125,7 +130,8 @@ Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA rec
 | Serve `lucos_backups` HTTP with `ThreadingHTTPServer` so `/refresh-tracking` can't block `/_info` and the healthcheck (the cause of the 116 hourly-cycle alerts) | lucas42/lucos_backups#374 | Open (Priority raised to High) |
 | `Repository.backup()`: carry on to the remaining hosts when one fails, then raise once | lucas42/lucos_backups#460 | Open |
 | Warn that `lucos_backups`' `/var/log/cron.log` is a FIFO that reading consumes | lucas42/lucos_backups#461 | Open |
-| Restore IPv6 on xwing and salvare after the outage | lucas42/lucos#331 | Done (router restart, 2026-11-03 ~23:40) |
+| Restore IPv6 on xwing and salvare after the outage | lucas42/lucos#331 | Done (IPv6 back by 23:42, after a router restart at ~23:40) |
+| *Related, existing:* the outage made lucos_agent's scheduled `prune-images` fail and nothing alerted, because monitoring's `circleci` check ignores `scripts.yaml` repos | lucas42/lucos_monitoring#321 | Open |
 | *Related, existing:* coalesce alerts that share a cause. The 137 alerts are the class this addresses; lucas42/lucos_backups#374 removes this particular trigger. | lucas42/lucos_monitoring#302 | Open |
 | *Considered and not filed:* an SSH/scp connect timeout in `lucos_backups`. For tracking, it prevents no alert once lucas42/lucos_backups#374 lands. For `create-backups`, it would shorten a run like the inferred 12–16h one above, but with every destination unreachable that run and the slot it swallowed would both have failed anyway, so no copy would have been saved. | n/a | Not filed |
 | *Considered and not filed:* anything about redundancy or availability for xwing/salvare, including detecting or automating recovery when the router fails to re-acquire its IPv6 prefix (the second occurrence, after 2026-04-19). | n/a | Out of scope by lucas42's decision (in chat, relayed by team-lead, 2026-11-03) |
