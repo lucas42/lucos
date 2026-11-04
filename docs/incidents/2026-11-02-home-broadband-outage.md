@@ -42,8 +42,9 @@ lucas42's home broadband was hard down for about 33 hours. Every lucos host at h
 | 2026-11-03 ~23:40 | lucas42 restarts the home router (time from his message, relayed by team-lead). |
 | 2026-11-03 23:42 | IPv6 is back on xwing and salvare, with the same prefix and the same public IPv4, so no DNS or `hosts.yaml` changes are needed. |
 | 2026-11-03 23:43 | `lucos_backups` tracking reaches salvare again. Source: the in-process run finished at 23:43:22 with no salvare error; monitoring's 23:43:39 alert no longer lists `host-tracking-failures`; `/_info` at 23:46 shows `host-count` 4 and the check ok. |
-| 2026-11-04 03:25 | Next `create-backups` run, expected to clear the check and copy to salvare. **TBD: pending result.** |
-| 2026-11-04 04:49 | Next `prune-backups` run, expected to clear the check. **TBD: pending result.** |
+| 2026-11-04 03:02 | lucos_agent's scheduled `prune-images` succeeds on all three hosts, avalon, xwing and salvare (pipeline 122). |
+| 2026-11-04 03:25–03:57 | `create-backups` succeeds: 126 archives. Volume and one-off copies reach aurora, salvare and xwing, and repository archives reach avalon, salvare and xwing (98 each). The `create-backups` check clears. |
+| 2026-11-04 04:49–05:06 | `prune-backups` succeeds ("Pruning Complete") and its check clears. Monitoring shows 56/56 systems healthy. **Incident fully resolved.** |
 
 ---
 
@@ -106,7 +107,7 @@ Because avalon reaches salvare at `salvare.s.l42.eu`, which has only an AAAA rec
 
 ### Other side-effects
 
-- **lucos_agent's `prune-images` failed silently.** lucos_agent's scheduled `prune-images` job failed for xwing and salvare at 03:02 on both 11-02 and 11-03, at the `ssh-keyscan` step. The outage window fits; lucos-system-administrator spotted it but couldn't confirm the cause from the step output, which was empty. It is expected to clear at the next scheduled run, 03:02 on 11-04. **TBD: pending result.** Nothing alerted, because monitoring's `circleci` check ignores repos listed only in `scripts.yaml` (lucas42/lucos_monitoring#321, existing).
+- **lucos_agent's `prune-images` failed silently.** lucos_agent's scheduled `prune-images` job failed for xwing and salvare at 03:02 on both 11-02 and 11-03, at the `ssh-keyscan` step. The outage window fits; lucos-system-administrator spotted it but couldn't confirm the cause from the step output, which was empty. It cleared at the next scheduled run: 03:02 on 11-04 succeeded on all three hosts. Nothing alerted, because monitoring's `circleci` check ignores repos listed only in `scripts.yaml` (lucas42/lucos_monitoring#321, existing).
 - **Not related, but it overlaps in time:** at about 23:35 on 11-02, mid-outage, the `circleci` check went red on 52 of 56 systems. That's a separate failure: lucos_monitoring had no CircleCI token, and the CircleCI API stopped serving the unauthenticated requests it had been making (lucas42/lucos_monitoring#320). Anyone scanning alert history for this period should not link the two.
 
 ### A side-effect of the investigation: the cron.log FIFO
