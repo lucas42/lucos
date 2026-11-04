@@ -25,7 +25,7 @@ lucas42's home broadband was hard down for about 33 hours. Every lucos host at h
 | Time (UTC) | Event |
 |---|---|
 | 2026-11-01 15:58 | Last successful `create-backups` run before the outage: 127 archives, copied to the home hosts. |
-| 2026-11-02 01:08 | Home broadband goes down. The first alerts arrive over the next 5 minutes, all for home-hosted services or checks that probe them: `lucos_time` `media` (01:08:59), `lucos_media_import` (01:09:30), `lucos_docker_health` `salvare-v4`/`xwing-v4` (01:10:30), `lucos_dns_secondary` `port-53-reachable` (01:11:32), `lucos_private` and `lucos_static_media` (01:12), `xwing` (01:13:01). |
+| 2026-11-02 ~01:05 | Home broadband goes down (by 01:07 at the latest; see the next row). The first alerts arrive from 01:08 over the next 5 minutes, all for home-hosted services or checks that probe them: `lucos_time` `media` (01:08:59), `lucos_media_import` (01:09:30), `lucos_docker_health` `salvare-v4`/`xwing-v4` (01:10:30), `lucos_dns_secondary` `port-53-reachable` (01:11:32), `lucos_private` and `lucos_static_media` (01:12), `xwing` (01:13:01). |
 | 2026-11-02 01:12 | The first false avalon-side alerts, `lucos_backups` `fetch-info` and `lucos_docker_health` `avalon`, are already firing, triggered by the 01:07 refresh. So the connection had already dropped by 01:07, and the first alerts lag the real start by a few minutes. |
 | 2026-11-02 02:11–02:15 | First full instance of the hourly cycle: `lucos_backups` `fetch-info` and `lucos_docker_health` `avalon` go red at about :11–:12 and clear at about :13–:15. The cycle recurs in 29 of the ~33 hours of the outage. |
 | 2026-11-02 03:25 | `create-backups` slot: expected to no-op, because the last success was 11.5h earlier, inside the 20h skip-if-fresh window. Logs for this period are lost. |
@@ -33,9 +33,9 @@ lucas42's home broadband was hard down for about 33 hours. Every lucos host at h
 | 2026-11-03 04:55 | `prune-backups` fails for all three home hosts ("host unreachable"). |
 | 2026-11-03 10:11 | ISP restores service. `xwing` recovers at 10:11:31; xwing and aurora are reachable again. salvare is not. |
 | 2026-11-03 10:13 | Last avalon-side flap alert. |
+| 2026-11-03 10:35 onwards | Tracking runs after recovery take 10–15s: salvare now fails *fast* ("Unable to connect", not a SYN timeout), so a refresh no longer blocks the server for minutes. No further flapping. (The 11:07 hourly refresh itself got a cooldown 429 and didn't run; the evidence comes from the in-process runs, which use the same code.) |
 | 2026-11-03 10:39 | lucos-system-administrator opens lucas42/lucos#331: neither xwing nor salvare has a global IPv6 address, and salvare is unreachable from avalon. |
 | 2026-11-03 ~10:40 | lucos-site-reliability traces the flapping to `lucos_backups`' hourly `/refresh-tracking` blocking its single-threaded server, and adds the evidence to the existing lucas42/lucos_backups#374 (later raised to High priority). |
-| 2026-11-03 10:35 onwards | Tracking runs after recovery take 10–15s: salvare now fails *fast* ("Unable to connect", not a SYN timeout), so a refresh no longer blocks the server for minutes. No further flapping. (The 11:07 hourly refresh itself got a cooldown 429 and didn't run; the evidence comes from the in-process runs, which use the same code.) |
 | 2026-11-03 15:25 | `create-backups` runs. Every volume and one-off file is archived and copied to aurora and xwing, the first off-avalon copies since 11-01 15:58. Copies to salvare fail. Repository archives reach avalon only: 98 to avalon, 98 failed to salvare, 0 to xwing. aurora never takes repository archives, by design (lucas42/lucos_backups#460). |
 | 2026-11-03 22:50–22:53 | While investigating that run, lucos-site-reliability reads `/var/log/cron.log` inside the container, not knowing it is a FIFO, and briefly competes with its drain. No cron output is written in that window, so nothing is believed lost (lucas42/lucos_backups#461). |
 | 2026-11-03 23:37 | lucos-system-administrator root-causes the IPv6 loss: the home router is sending router advertisements with **no prefix and a router lifetime of 0**. |
@@ -70,7 +70,7 @@ The xwing and salvare checks behaved correctly: they went red at about 01:10 and
 
 **Why it wasn't strictly hourly.** In 4 of the ~33 hours the cycle didn't fire. This was observed directly after the outage: the in-process retry timer (every 5 minutes, in its own thread, which doesn't block the server) occasionally finished within the 60s before :07. The cron's refresh was then rejected by the cooldown with a 429, so that hour's blocking run never happened.
 
-**Why it stopped before IPv6 returned.** Once the ISP was back, salvare's address was no longer blackholed. It was simply unroutable, so connections failed immediately ("Unable to connect to port 22") instead of waiting out SYN retries. From the 11:07 refresh onwards, tracking took 10–15s and nothing alerted, even though salvare was still unreachable.
+**Why it stopped before IPv6 returned.** Once the ISP was back, salvare's address was no longer blackholed. It was simply unroutable, so connections failed immediately ("Unable to connect to port 22") instead of waiting out SYN retries. From the first post-recovery tracking run (10:35) onwards, tracking took 10–15s and nothing alerted, even though salvare was still unreachable.
 
 lucas42/lucos_backups#374's original impact statement said this blocking "doesn't alert" at its normal ~20s. This incident is the latent case that ticket warned about, triggered by unreachable hosts rather than a slow GitHub. The fix (`ThreadingHTTPServer`) is unchanged and would have prevented all 116 alerts from the hourly cycle.
 
