@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| **Date** | 2026-11-20 to 2026-11-22 |
-| **Duration** | About 2 days of exposure (dev copy active from ~16:48 UTC on 11-20 until lucas42 stopped it on 11-22). `prune-backups` red from 04:51 to 18:11 UTC on 11-22 (13h20m), cleared by an ad-hoc rerun |
+| **Date** | 2026-07-04 to 2026-11-22 (intermittent) |
+| **Duration** | Intermittent over about 4.5 months: the dev copy pruned production on 2026-07-04 (its own log) and ran continuously from ~16:48 UTC on 11-20 until lucas42 stopped it on 11-22. Full run history TBD from the laptop log. `prune-backups` red from 04:51 to 18:11 UTC on 11-22 (13h20m), cleared by an ad-hoc rerun |
 | **Severity** | Data risk / Security |
 | **Services affected** | lucos_backups (the backup copies on xwing, aurora, salvare and avalon) |
 | **Detected by** | SRE ops check (the `prune-backups` monitoring check) |
@@ -12,7 +12,7 @@
 
 ## Summary
 
-A restart of OrbStack on lucas42's laptop brought back development copies of his lucOS systems, which have `restart: always` set. The development `lucos_backups` holds a working SSH key, which lucas42 reports looks the same as the production key (lucas42/lucos_backups#442). It takes its host list from configy like any other copy, so for about two days it ran its scheduled jobs against the **production** backup hosts. Its `prune-backups` ran at 04:49 UTC alongside the real one on 11-21 and 11-22, and deleted the same retention cohorts at the same time. Both runs failed, which turned the `prune-backups` check red. The leading hypothesis was confirmed by TBD (pending the laptop's `docker logs` and the 2026-11-23 run). The retention ladder is intact on xwing and salvare (verified). Aurora is still to be verified (TBD). The dev copy reported only to local services, so production monitoring never saw its runs, only the damage they did to the real ones. Tracked from lucas42/lucos_backups#365.
+A restart of OrbStack on lucas42's laptop brought back development copies of his lucOS systems, which have `restart: always` set. The development `lucos_backups` holds a working SSH key, which lucas42 reports looks the same as the production key (lucas42/lucos_backups#442). It takes its host list from configy like any other copy, so whenever the laptop was running it, the dev copy ran its scheduled jobs against the **production** backup hosts. That started at the latest on 2026-07-04, the date of lucas42/lucos_backups#365's first occurrence, and last happened from 11-20 to 11-22. Its `prune-backups` ran at 04:49 UTC alongside the real one and deleted the same retention cohorts at the same time. Its 747-backup prune on 07-04 is exactly the retention rule's count for that day. Both runs failed, which turned the `prune-backups` check red. The leading hypothesis was confirmed by TBD (pending the laptop's `docker logs` and the 2026-11-23 run). The retention ladder is intact on xwing and salvare (verified). Aurora is still to be verified (TBD). The dev copy reported only to local services, so production monitoring never saw its runs, only the damage they did to the real ones. Tracked from lucas42/lucos_backups#365.
 
 ---
 
@@ -21,7 +21,8 @@ A restart of OrbStack on lucas42's laptop brought back development copies of his
 | Time (UTC) | Event |
 |---|---|
 | 2026-05-15 → | Not part of this incident, but found during it: lucos_router's nightly schedule-tracker report has been rejected (HTTP 400) since the v2 migration (lucas42/lucos_router#114) |
-| 2026-07-04, 07-05, 08-20, 08-27, 08-28 | Earlier `prune-backups` failures of the same shape, recorded on lucas42/lucos_backups#365 and diagnosed at the time as the job racing itself. In hindsight these may be earlier sessions of the same dev copy. The router log only reaches back to 10-29, so this can't be shown |
+| 2026-07-04 04:49 | **The dev copy prunes production.** Its own log reads `Pruning Complete - 747 backups pruned`, then a Loganne error stamped `2026-07-04T04:49:43`. 07-04 was a two-cohort day (06-27 and 05-30), and production's two-cohort days just before pruned 745 (06-22) and 748 (06-28), so 747 is exactly the retention rule's count. The production run failed on vanished files, which is lucas42/lucos_backups#365's first occurrence |
+| 2026-07-05, 08-20, 08-27, 08-28 | Further production `prune-backups` failures of the same shape, put down at the time to the job racing itself. Production pruned well below its ~380–396 baseline on 07-06 (257), 08-21 (271), 08-23 (263) and 08-24 (78), which suggests a shared cohort. Inferred, pending the laptop's full run history (TBD) |
 | 2026-11-20 16:48:57 | First requests from dev-looking clients reach production from the home network address: a Java client (16:48:57), `lucos_creds_configy_sync` (16:48:59), `lucos_dns_sync` (17:00:01). This is consistent with an OrbStack restart at about this time |
 | 2026-11-20 17:03:00 | First `lucos_backups` user-agent request from the home network address, configy `/hosts` and `/volumes`, at exactly the job's hourly `refresh-config` slot. There were none in the router log from 11-15 to 11-19 |
 | 2026-11-21 04:49 | Both `prune-backups` runs collide. The production run's `rm -rf` of aurora's expired photos snapshot loses its own top-level directory mid-run (1,484 ENOENT lines), and xwing's file listing sees files vanish. The run reports `Prune failed for: aurora.lan/lucos_photos_photos, xwing.s.l42.eu (host unreachable)` |
