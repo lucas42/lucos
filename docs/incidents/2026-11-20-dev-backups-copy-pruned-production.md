@@ -12,7 +12,7 @@
 
 ## Summary
 
-A restart of OrbStack on lucas42's laptop brought back development copies of his lucOS systems, which have `restart: always` set. The development `lucos_backups` holds a working SSH key (lucas42/lucos_backups#442), and it always takes its host list from production configy (lucas42/lucos_backups#476). So for about two days it ran its scheduled jobs against the **production** backup hosts. Its `prune-backups` ran at 04:49 UTC alongside the real one on 11-21 and 11-22, and deleted the same retention cohorts at the same time. Both runs failed, which turned the `prune-backups` check red. The leading hypothesis was confirmed by TBD (pending the laptop's `docker logs` and the 2026-11-23 run). The retention ladder is intact on xwing and salvare (verified). Aurora is still to be verified (TBD). The dev copy reported only to local services, so production monitoring never saw its runs, only the damage they did to the real ones. Tracked from lucas42/lucos_backups#365.
+A restart of OrbStack on lucas42's laptop brought back development copies of his lucOS systems, which have `restart: always` set. The development `lucos_backups` holds a working SSH key, which lucas42 reports looks the same as the production key (lucas42/lucos_backups#442). It takes its host list from configy like any other copy, so for about two days it ran its scheduled jobs against the **production** backup hosts. Its `prune-backups` ran at 04:49 UTC alongside the real one on 11-21 and 11-22, and deleted the same retention cohorts at the same time. Both runs failed, which turned the `prune-backups` check red. The leading hypothesis was confirmed by TBD (pending the laptop's `docker logs` and the 2026-11-23 run). The retention ladder is intact on xwing and salvare (verified). Aurora is still to be verified (TBD). The dev copy reported only to local services, so production monitoring never saw its runs, only the damage they did to the real ones. Tracked from lucas42/lucos_backups#365.
 
 ---
 
@@ -38,10 +38,10 @@ A restart of OrbStack on lucas42's laptop brought back development copies of his
 
 ### A development copy is a production actor
 
-Three things combined to make a development container act on production.
+Three things combined to make a development container act on production. The second is the one that matters.
 
-1. **The host list is never environment-specific.** `src/utils/config.py` fetches hosts and volumes from `https://configy.l42.eu`, hardcoded. `ENVIRONMENT` changes nothing about which machines the scheduled jobs SSH into. The crontab is the same in every environment, too: `create-backups` at 03:25 and 15:25, `prune-backups` at 04:49, and `refresh-tracking` hourly.
-2. **The development store holds a working key.** `creds-shape lucos_backups development` reports `SSH_PRIVATE_KEY  len=398 lines=7 empty=false pem_type="OPENSSH PRIVATE KEY"`, and lucas42 reports that it looks the same as the production value. lucas42/lucos_backups#442 records how it got there: `rotate-ssh-key.sh` writes the production key into the development store as well.
+1. **A development copy runs the same logic as production, by design.** `src/utils/config.py` fetches hosts and volumes from `https://configy.l42.eu`, and the crontab is the same in every environment: `create-backups` at 03:25 and 15:25, `prune-backups` at 04:49, and `refresh-tracking` hourly. That's deliberate. A development version whose core logic branches on `ENVIRONMENT` wouldn't be worth having (see Follow-up Actions). So what keeps a dev copy off the production hosts is not its configuration but its lack of a credential the hosts accept.
+2. **The development store holds a working key, and that is the defect.** `creds-shape lucos_backups development` reports `SSH_PRIVATE_KEY  len=398 lines=7 empty=false pem_type="OPENSSH PRIVATE KEY"`, and lucas42 reports that it looks the same as the production value. lucas42/lucos_backups#442 records how it got there: `rotate-ssh-key.sh` writes the production key into the development store as well.
 3. **`restart: always` brings it back unattended.** Nobody started a dev backups instance on purpose. A Docker runtime restart revived every container that had ever been brought up on the laptop.
 
 Its retention rule matched production's only because `toKeep` hasn't changed since 2024-11. A dev build carrying an in-progress retention change, or running on a machine with a wrong clock, would have deleted whatever its own rule said.
@@ -76,7 +76,7 @@ The dev copy's `refresh-tracking` (hourly, read-only `docker` listings over SSH)
 | Action | Issue / PR | Status |
 |---|---|---|
 | Stop storing the production backups key in the development store, and rotate it | lucas42/lucos_backups#442 | Open (High), with lucos-security |
-| Make a non-production lucos_backups refuse to act on production hosts | lucas42/lucos_backups#476 | Open, awaiting triage |
+| *Considered and rejected:* make a non-production lucos_backups refuse to act on production hosts | lucas42/lucos_backups#476 | Closed by lucas42: a development version whose core logic depends on an `environment == production` flag defeats the point of having one. Credential separation (lucas42/lucos_backups#442) is the control |
 | Make `prune-backups` tolerate vanishing entries and report errors honestly (no false `host unreachable`) | lucas42/lucos_backups#365 | Open |
 | Verify aurora's retention ladder | TBD (lucas42, via the backups UI) | Pending |
 | Router nightly report rejected since 2026-05-15 (found during this incident) | lucas42/lucos_router#114 | Open |
