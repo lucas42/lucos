@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-11-20 to 2026-11-22 |
-| **Duration** | About 2 days of exposure (dev copy active from ~16:48 UTC on 11-20 until lucas42 stopped it on 11-22). `prune-backups` red from 04:51 UTC on 11-22 until TBD (pending the 2026-11-23 04:49 UTC run) |
+| **Duration** | About 2 days of exposure (dev copy active from ~16:48 UTC on 11-20 until lucas42 stopped it on 11-22). `prune-backups` red from 04:51 to 18:11 UTC on 11-22 (13h20m), cleared by an ad-hoc rerun |
 | **Severity** | Data risk / Security |
 | **Services affected** | lucos_backups (the backup copies on xwing, aurora, salvare and avalon) |
 | **Detected by** | SRE ops check (the `prune-backups` monitoring check) |
@@ -30,7 +30,10 @@ A restart of OrbStack on lucas42's laptop brought back development copies of his
 | 2026-11-22 ~16:30 | SRE ops check finds the second deleter. One probe was wrong and wrongly ruled out the development environment (see "What Was Tried That Didn't Work") |
 | 2026-11-22 ~17:30 | lucas42 suggests the OrbStack dev copies. SRE confirms the dev environment holds a real key and matches the router-log onset |
 | 2026-11-22 (evening) | lucas42 stops all dev containers on the laptop. Retention ladder verified intact on xwing and salvare |
-| 2026-11-23 04:49 | First `prune-backups` run with the dev copy gone. TBD pending result |
+| 2026-11-22 17:03 → 18:03 | Last dev-copy `lucos_backups` request from the home network at 17:03:00; none at the 18:03 slot |
+| 2026-11-22 ~18:05 | Ad-hoc `prune-backups` rerun: clean, 1 instance pruned (on aurora) |
+| 2026-11-22 18:11:39 | `prune-backups` healthy; dashboard 56/56 |
+| 2026-11-23 04:49 | First scheduled `prune-backups` run with the dev copy gone; the test of the hypothesis. TBD pending result |
 
 ---
 
