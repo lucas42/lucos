@@ -47,7 +47,12 @@ The fix the firewall needed was already a recorded decision. ADR-0007 Amendment 
 | 18:04:30 | xwing lucos_firewall: "Rules confirmed and active"; loop ends. salvare confirmed enforcing normally |
 | 18:13:42 | lucos_firewall v1.0.21 deployed via CircleCI (pipeline 70), removing the `DRY_RUN` override. avalon "Rules confirmed and active" at 18:14:12; DNAT still 38 |
 | 18:53 | lucos_time's contacts cache refreshes; monitoring at 54/56 healthy. Remaining reds are scheduled jobs that last ran during the outage |
-| TBD | lucos_time eolas cache (hourly) and lucos_repos audit/c4-model (6-hourly, next 19:42) clear on their next runs (TBD pending re-check) |
+| 18:58 | lucos_time's eolas cache refreshes on its hourly cycle |
+| 19:04–19:24 | Remaining reds actively cleared, at lucas42's request: lucos_repos audit sweep triggered; **21** Dependabot PRs found stuck (monitoring's "3" predated the outage). 19 had `Docker Login (mirror)` timeouts against docker.l42.eu during the outage; one had a transient Go-proxy failure from 11-24; one (lucas42/.github#78) needed code-reviewer approval. CircleCI workflows re-run from failed; all 21 merged by 19:24 |
+| 19:18:26 | lucas42/lucos_firewall#32 (fix for lucas42/lucos_firewall#31) merges |
+| 19:24–19:37 | lucos_firewall v1.0.22 deployed and confirmed on salvare (19:24:18), xwing (19:25:39) and avalon (19:37:51). On xwing and avalon the nat table, DNAT counts (6, 38) and owned chains are byte-identical to a pre-deploy baseline |
+| 19:34 | **Monitoring 56/56 healthy.** Incident resolved |
+| TBD | Namespace-isolated test of v1.0.22's revert path on xwing (TBD pending result) |
 
 ---
 
@@ -55,7 +60,7 @@ The fix the firewall needed was already a recorded decision. ADR-0007 Amendment 
 
 ### Stage 1: a routine dockerd restart
 
-The trigger was mundane. `unattended-upgrades` installed a docker-ce point release on xwing and then on avalon, 2m12s apart. Docker auto-upgrade is deliberate: lucas42/lucos_agent_coding_sandbox#100 extended unattended-upgrades to Docker packages with "no carve-outs", on the assumption that `live-restore: true` makes daemon restarts harmless. On its own, this restart was the ~10-second blip that assumption predicts. According to lucos-system-administrator, four earlier docker-ce upgrades this month were exactly that. Whether docker-ce/containerd should keep auto-upgrading on production hosts is now a decision for lucas42: lucas42/lucos_agent_coding_sandbox#122.
+The trigger was mundane. `unattended-upgrades` installed a docker-ce point release on xwing and then on avalon, 2m12s apart. Docker auto-upgrade is deliberate: lucas42/lucos_agent_coding_sandbox#100 extended unattended-upgrades to Docker packages with "no carve-outs", on the assumption that `live-restore: true` makes daemon restarts harmless. On its own, this restart was the ~10-second blip that assumption predicts. According to lucos-system-administrator, four earlier docker-ce upgrades this month were exactly that. Whether docker-ce/containerd should keep auto-upgrading on production hosts was put to lucas42 (lucas42/lucos_agent_coding_sandbox#122). He chose to keep auto-upgrading: with the firewall fixed, a dockerd restart is back to being the harmless blip the original decision assumed.
 
 ### Stage 2: the firewall took its snapshot mid-restart
 
@@ -104,9 +109,9 @@ The outage lasted 35h47m because nobody who could act was told. Monitoring knew 
 
 | Action | Issue / PR | Status |
 |---|---|---|
-| Build ADR-0007's last-known-good *ports* (conformance); make confirmation differential (don't act on a probe already failing pre-apply); scope the revert to owned chains as defence in depth | lucas42/lucos_firewall#31 | Open |
+| Build ADR-0007's last-known-good *ports* (conformance); make confirmation differential (don't act on a probe already failing pre-apply); scope the revert to owned chains as defence in depth | lucas42/lucos_firewall#31, fixed by lucas42/lucos_firewall#32 (v1.0.22) | Done |
 | Decide whether to re-accept the alerting-on-avalon risk given this incident | lucas42/lucos#334 | Open (Awaiting Decision) |
-| Decide whether docker-ce/containerd.io keep auto-upgrading on production hosts | lucas42/lucos_agent_coding_sandbox#122 | Open (Awaiting Decision) |
+| Decide whether docker-ce/containerd.io keep auto-upgrading on production hosts | lucas42/lucos_agent_coding_sandbox#122 | Done (keep auto-upgrading) |
 
 ---
 
