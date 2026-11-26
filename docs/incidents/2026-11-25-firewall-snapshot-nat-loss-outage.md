@@ -52,7 +52,7 @@ The fix the firewall needed was already a recorded decision. ADR-0007 Amendment 
 | 19:18:26 | lucas42/lucos_firewall#32 (fix for lucas42/lucos_firewall#31) merges |
 | 19:24–19:37 | lucos_firewall v1.0.22 deployed and confirmed on salvare (19:24:18), xwing (19:25:39) and avalon (19:37:51). On xwing and avalon the nat table, DNAT counts (6, 38) and owned chains are byte-identical to a pre-deploy baseline |
 | 19:34 | **Monitoring 56/56 healthy.** Incident resolved |
-| TBD | Namespace-isolated test of v1.0.22's revert path on xwing (TBD pending result) |
+| 20:12–20:13 | Namespace-isolated test of v1.0.22 on xwing (lucas42-approved): two `--network none` containers, stub configy, one seeded DNAT rule. A ports change applied, then configy was killed inside the confirm window. The firewall reverted the owned chains only: nat stayed byte-identical to the seed and the owned chains returned exactly to their confirmed state. With configy still dark, the next polls logged "Holding last confirmed ports" and changed nothing. Host iptables were identical before and after; the test containers and files were removed |
 
 ---
 
