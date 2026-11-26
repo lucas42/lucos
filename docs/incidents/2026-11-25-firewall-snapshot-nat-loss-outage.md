@@ -111,6 +111,7 @@ The outage lasted 35h47m because nobody who could act was told. Monitoring knew 
 |---|---|---|
 | Build ADR-0007's last-known-good *ports* (conformance); make confirmation differential (don't act on a probe already failing pre-apply); scope the revert to owned chains as defence in depth | lucas42/lucos_firewall#31, fixed by lucas42/lucos_firewall#32 (v1.0.22) | Done |
 | Decide whether to re-accept the alerting-on-avalon risk given this incident | lucas42/lucos#334 | Open (Awaiting Decision) |
+| Surface held-stale-ports and repeated reverts to monitoring. lucas42/lucos_firewall#32 dropped the `/_info` age field both reviews asked for, because the service has no HTTP server, so today these are log-only | lucas42/lucos_firewall#33 | Open |
 | Decide whether docker-ce/containerd.io keep auto-upgrading on production hosts | lucas42/lucos_agent_coding_sandbox#122 | Done (keep auto-upgrading) |
 
 ---
